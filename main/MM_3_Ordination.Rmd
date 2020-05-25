@@ -1,0 +1,85 @@
+---
+title: "Microbial Mapping - NMDS"
+output: html_notebook
+---
+# Document Summary
+This code is for generating figures related to the actual sequencing data from the waimea hiseq data sets.
+first and foremost, the goal is to generate a variety of nmds plots to visualize braod trends in the data.
+
+
+## Set Up Environment
+Set a standardized color palettes for plotting and load libraries
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(data.table)
+
+# check working directory
+setwd("/home/sean/documents/bioinformatics/projects/waimea/microbial_mapping/main")
+
+# set ggplot theme
+theme_set(theme_bw())
+
+# set color palettes 
+pal_d = "spectral"
+scale_colour_discrete <-  function(palname=pal_d, ...){
+  scale_colour_brewer(palette=palname, ...)
+}
+scale_fill_discrete <-  function(palname=pal_d, ...){
+    scale_fill_brewer(palette=palname, ...)
+}
+
+pal_c = "c"
+uniform_gradient_color <- function(palname = pal_c){
+  scale_color_viridis_c(option = palname)
+}
+
+# can change these settings with viridis package
+# with colour brewer, need add a line to each plot for continuous colors
+# "scale_color_gradient2(low = "green", mid = "blue", high = "red")"
+
+#  scale_colour_continuous <-  function(palname=pal_c, ...){
+#    scale_colour_brewer(palette=palname, ...)
+#  }
+# # 
+#  scale_fill_continuous <-  function(palname=pal_c, ...){
+#    scale_fill_brewer(palette=palname, ...)
+#  }
+
+
+
+```
+
+
+
+
+
+
+## all sample nmds
+run nmds on all samples
+
+```{r}
+
+```
+
+### by trophic
+run nmds colored by trophic level for all samples, and split by habitat
+```{r}
+
+```
+
+### by habitat
+```{r}
+
+```
+
+### by host
+```{r}
+
+```
+
+## subset nmds
+```{r}
+
+```
