@@ -11,9 +11,10 @@ Pipeline output files are read in, written out as cleaned flat files, and read b
 ```{r}
 library(data.table)
 library(phyloseq)
-
-setwd("/home/sean/documents/bioinformatics/projects/waimea/microbial_mapping/main")
-
+if(getwd() != "/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
+  {
+setwd("/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
+}
 
 ```
 
@@ -81,7 +82,7 @@ mm_16s <- clean_16S_tables(
                   description = "mm_16s_hiseqs",
                   output_dir = "../data/processed/cleaned",
                   id_column = "sequencing_id",
-                  cull = list(min.num = 3, min.abund = 500, min.single.abund = 1000 )
+                  cull = list(min.num = 4, min.abund = 500, min.single.abund = 1000)
                   )
 
 # write out the list of dataframes as r object
@@ -105,11 +106,34 @@ MM_16S_phy <- make_phyloseq(abund_file  = "../data/processed/cleaned/mm_16s_hise
                             meta_file   = "../data/processed/cleaned/mm_16s_hiseqs_metadata_table.csv",
                             id_column = "sequencing_id")
 
+ntaxa(MM_16S_phy)
+
+
+# filter taxa
+MM_16S_phy <- subset_taxa(MM_16S_phy, (order!="Chloroplast") &
+                                         (kingdom != "Archaea") &
+                                         (family != "Mitochondria") &
+                                         (kingdom != "Unknown"))
+ntaxa(MM_16S_phy)
+
+nsamples(MM_16S_phy)
+
+
+# filter out empty samples
+MM_16S_phy <- prune_samples(sample_sums(MM_16S_phy) != 0, MM_16S_phy)
+
+nsamples(MM_16S_phy)
+
+# filter by project
+MM_16S_phy <- subset_samples( MM_16S_phy, project_name %in% c("Keck","JoshMS"))
+
+
 # write out phyloseq
-saveRDS(MM_16S_phy,"MM_16S_phy.rds")
+saveRDS(MM_16S_phy, "../data/processed/cleaned/MM_16S_phy.rds")
 
 # remove phyloseq object
 rm(MM_16S_phy)
+
 
 ```
 
