@@ -1,0 +1,563 @@
+---
+title: "Microbial Mapping - Geographic Maps and Data"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Document Summary
+This code is for importing geographic data, extracting data based on GPS location, and plotting sampling points onto various GIS layers.
+
+
+## Load libraries:
+Libraries are separated into general utility and spatial.
+There are several large spatial libraries required for this analysis.
+
+```{r echo=FALSE}
+# spatial
+spatial_libs <- c("rgdal","rayshader","MASS","ggmap", "FedData","raster","sp", "automap","geoviz","sf")
+
+# general
+general_libs <- c("data.table","dplyr","tidyr","ggplot2","viridisLite","data.table")
+
+# load libraries invisibly
+invisible( lapply( c(spatial_libs,general_libs),
+                   library, character.only = T) )
+
+```
+
+## Set up ggplot
+Set some custom scales and functions for ggplot
+
+```{r}
+theme_set(theme_bw())
+
+# discrete color palette
+pal_d = "Dark2"
+scale_colour_discrete <-  function(palname=pal_d, ...){
+  scale_colour_brewer(palette=palname, ...)
+}
+scale_fill_discrete <-  function(palname=pal_d, ...){
+    scale_fill_brewer(palette=palname, ...)
+}
+# continuous color palette
+pal_c = "C"
+
+uniform_gradient_color <- function(palname = pal_c,...){
+  scale_color_viridis_c(option = palname, ...)
+}
+  
+uniform_gradient_fill <- function(palname = pal_c,...){
+  scale_fill_viridis_c(option = palname, ...)
+
+}
+
+
+```
+
+## Read in the data
+Read in the data as a data.table instead of data.frame
+
+```{r}
+# Read in raw sample metadata
+meta <- fread("../data/raw/sample/unique_waimea_hiseq_samples_emp.tsv")
+
+# drop samples with no geographic information (i.e. lab samples)
+meta <- na.omit(meta, cols = c("latitude_deg","longitude_deg"))
+
+```
+
+# Spatial Definitions
+Define spatial attributes of the data.
+Bounding box is important for subsetting larger spatial datasets to the correct area.
+Spatial data will only match up if all data is projected according to the same model.
+
+## Define bounding box
+All spatial points dataframes will have a bounding box attribute.
+Define the bounding box based on geographic range of sampling points.
+Format bounding box for use with multiple packages.
+
+```{r}
+# Check geographic range of sampling points
+limits <- c(
+               min(meta$longitude_deg),
+               min(meta$latitude_deg), 
+               max(meta$longitude_deg),
+               max(meta$latitude_deg) 
+               )
+
+# Define bounding box with a cushion around sampling points
+
+bbox <- list(
+  p1 = list(long = limits[1] - 0.015, lat = limits[2] - 0.002) ,
+  p2 = list(long = limits[3] + 0.015, lat = limits[4] + 0.002)
+)
+
+# add a reformatted version of this box for use with ggmap
+bbox$ggmap <- unlist(bbox[1:2])
+names(bbox$ggmap) <- c("left","bottom","right","top")
+
+# create an emtpy spatial polygon template of the bounding box for pulling elevation data
+bbox_extent <- polygon_from_extent(raster::extent(bbox$p1$long, bbox$p2$long, bbox$p1$lat, bbox$p2$lat),
+                               proj4string = "+proj=longlat +ellps=GRS80 +datum=WGS84 +no_defs")  
+
+
+```
+
+
+
+# Sat Images
+Us ggmap to create a basic 2D map of our study area, defined by the bounding box.
+Instead of using google API, we'll use open source stamen maps.
+
+The benefit of ggmap is integration with ggplot2 and all the features that go along with that.
+Mainly, I like the nice graphics, especially for plotting points/density/etc. type of data.
+
+The restriction that ggmap imposes is a strict requirement that all plots conform to a mercator projection instead of cartesian.
+This becomes a bit of a hassle once you import rasters, which are generally cartesian by default.
+The default settings are nice, but the package is not very flexible. 
+
+It looks like the package sf is more adaptable and widely used. 
+I will try to transition all mapping to sf package instead of ggmaps. 
+
+
+
+```{r}
+# pull base map images
+base_data <- get_map(location = bbox$ggmap, maptype = c("terrain"), zoom = 12)
+# plot base map
+base_map  <- ggmap(base_data)
+
+base_map
+                    
+```
+
+
+# Rasters
+Environmental raster data is sourced from external sources like UH geography or from federal databases (elevation).
+Links to data sources:
+
+Raster data need to be cropped to the same extent as our map.
+
+## Elevation
+Elevation data is important for our maps, where sites are staggered along an elevational gradient.
+These data will also come into play for the 3D mapping portion of this project.
+
+Notes: You can plot rasters onto ggplot maps (e.g. ggmaps), but a couple of issues arise. 
+1) ggmaps sets the coordinate system to mercator, which does not allow caretesian rasters to be plotted on top, so you can't use straight geom_raster.
+  You can get around this by forcing carteisian coordinates( coord_carteisan), but this is technically inacurate.
+  
+2) You can plot your geom_raster as a polygon instead, but this is slow and kind of convoluted.
+
+3) You can normalize your raster to values between 0:1 (mat/max(mat)) then use inset_raster from ggmap, but there's no way to change the transparency (alpha)
+
+### Plot Elevation
+```{r}
+## Elevation
+# pull elevation data in raster format
+elev_ras <- get_ned(template = bbox_extent, label = "elev", res = "1", force.redo = F,raw.dir = "../data/raw/spatial",extraction.dir = "../data/processed/interim/")
+
+# you can plot rasters with built in plot function
+plot(elev_ras)
+
+
+# and convert raster to data table and matrix for making other kinds of plots
+elev_dt  <- raster::as.data.frame(elev_ras, xy=T) %>% as.data.table()
+elev_mat <- as.matrix(elev_ras) %>% t()
+
+# plot elevation data table in ggplot
+elev_map <- ggplot() +
+            geom_raster(data= elev_dt, mapping =aes(x = x, y = y, fill = elev_NED_1))
+elev_map
+
+```
+
+### Extract Elevation Data
+
+```{r}
+meta$elevation <-  raster::extract(x = elev_ras,
+                        y = meta[, c("longitude_deg","latitude_deg")],
+                        df = TRUE)[[2]]
+```
+
+## Rainfall
+Rainfall data closely mirrors elevation. Precipitation is calculated as yearly average, and can befound at rainfall atlas of hawaii and evapotranspiration hawaii
+http://rainfall.geography.hawaii.edu/rainfall.html
+
+Note:
+Monique Chyba in the math department was working on taking fine grain rainfall data and generating a rainfall dataset that accounts for variance better than 'mean' rainfall. 
+
+```{r rainfall}
+# rasters are yearly averages, and can be
+# found at rainfall atlas of hawaii and evapotranspiration hawaii
+# http://rainfall.geography.hawaii.edu/rainfall.html
+#Extract data from rasters using sampling coordinates
+
+set_proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84"
+
+
+# read annual rainfall txt file as raster
+rain_ras <- raster("../data/raw/spatial/rfgrid_mm_oahu_ann.txt", crs = set_proj)
+
+# crop to correct bbox
+rain_ras <- crop(rain_ras, bbox_extent)
+
+plot(rain_ras)
+
+# and convert raster to data table and matrix for making other kinds of plots
+rain_dt  <- raster::as.data.frame(rain_ras, xy=T) %>% as.data.table()
+rain_mat <- as.matrix(rain_ras) %>% t()
+
+# plot elevation data table in ggplot
+rain_map <- ggplot() +
+            geom_raster(data= rain_dt, mapping =aes(x = x, y = y, fill = rfgrid_mm_oahu_ann))
+rain_map
+
+
+```
+
+### Extract Rainfall Data
+Pull out rainfall data from raster and store as column 'rainfall' in the metadata
+
+```{r}
+meta$rainfall <-  raster::extract(x = rain_ras,
+                        y = meta[ , c("longitude_deg","latitude_deg")],
+                        df = TRUE)[[2]]
+```
+
+
+
+# Points
+Points being plotted onto the map will be placed based on latitude and longitude.
+Each sampling point has specific lat/long and associated environmental metadata.
+Many samples were collected at each point.
+
+Generally, we will be pulling out site specific data (rainfall, elevation, lat/long) and aggregating sample related data for each site (e.g. number of samples, abundance of taxon, etc).
+
+
+## Plot Points - XY
+Start by grouping data by spatial points. Plot points onto different basemaps using ggplot.
+Do the points end up in the right place? They should.
+Note: Riverine and terrestrial plots have the same gps reference point. They overlap and cancel each other out.
+
+
+```{r}
+# specify columns that are associated with each sampling site
+spatial_cols <- c("site_name", "site_code" ,"site_type","latitude_deg","longitude_deg", "habitat", "envo_biome_2", "elevation")
+
+
+# Use data.table to remove rows with no spatial data, count rows (i.e. samples), and return spatial columns.
+# in the future, replace ".N" with other functions to generate sample summary data for each site.
+
+point_data <- meta[ , .N, by = spatial_cols]
+
+
+# simple point map with normal base layer
+base_point_map  <- base_map +
+                    geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data)
+base_point_map
+
+# simple point map with elevation base layer
+elev_point_map <- elev_map +
+                   geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data) +
+                    coord_equal()
+elev_point_map
+
+# simple point map with rainfall base layer
+rain_point_map <- rain_map + 
+                    geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data) +
+                     coord_equal()
+          
+rain_point_map
+
+
+```
+
+## Plot Points and Lines
+Instead of plotting riverine sites as a point, they should be plotted as a line 100m long.
+This is a more accurate representation of the data collection.
+
+Ideally, these lines are 100m crops of the actual stream path
+To do this, read in the oahu streams layer from DAR.
+
+DAR stream layers can be downloaded using a REST API:
+infromation:
+https://geoportal.hawaii.gov/datasets/streams/geoservice?page=6
+
+query url:
+https://geodata.hawaii.gov/arcgis/rest/services/FreshWater/MapServer/1/query?where=stream_nam%20%3D%20'WAIMEA%20R'&outFields=*&outSR=4326&f=json
+
+However, I'm not really sure how to convert that data into a shapefile.
+Luckily, I already have the shapefile. 
+
+```{r}
+# check stream metadata to identify stream name
+streams      <- st_read('../data/raw/spatial/darstreams.kml')
+waimea_river <- streams[streams$STREAM_NAM == "Waimea R",]
+
+plot(st_geometry(waimea_river))
+
+ggplot()+
+  geom_sf(data = waimea_river, color = "blue")
+
+```
+
+
+## Plot Points and Lines
+
+```{r}
+# Plot on plain background
+ggplot() +  
+  geom_sf(data = waimea_river, color = alpha("blue",0.5)) +
+  geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data)
+
+# Plot on raster background
+ggplot() +  
+  geom_raster(data= elev_dt, mapping =aes(x = x, y = y, fill = elev_NED_1))+
+  geom_sf(data = waimea_river, color = alpha("blue",0.5)) +
+  geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data)
+
+  
+
+```
+
+# 3D Rayshading
+Pulling code from ST_rayshading.
+Goals:
+- Wrap up everything in modular functions
+- Overlay raster
+- Overlay xy points
+
+For the Rayshader to work, everything needs to match up exactly.
+Since the elevation raster forms the basis for the 3d map, overlayed images need to match the raster exactly.
+To help out, I'm pulling heavily from this tutorial https://wcmbishop.github.io/rayshader-demo/
+
+Overlaying a raster on top of rayshader map is actually pretty doable with raster::image function.
+Trying to do this with any other output from 'plot' or 'ggplot' was basically impossible, however.
+There's no good way to entirely get rid of margins and have the image perfectly match the required size of the underlying elevation raster.
+However, as long as the visualization you want to overlay is a raster, you can just export the raster to a png file.
+
+
+```{r}
+# use this fuction to define image size
+
+define_image_size <- function(bbox, major_dim = 400) {
+  
+  # calculate aspect ration (width/height) from lat/long bounding box
+  aspect_ratio <- abs((bbox$p1$long - bbox$p2$long) / (bbox$p1$lat - bbox$p2$lat))
+  
+  # define dimensions
+  img_width <- ifelse(aspect_ratio > 1, major_dim, major_dim*aspect_ratio) %>% round()
+  img_height <- ifelse(aspect_ratio < 1, major_dim, major_dim/aspect_ratio) %>% round()
+  
+  size_str <- paste(img_width, img_height, sep = ",")
+  
+  list(height = img_height, width = img_width, size = size_str)}
+
+
+# calculate image dimensions based on size of elevation raster
+img_size <- define_image_size(bbox = bbox, major_dim = max(dim(elev_ras)))
+
+# now export the raster as a png with the same dimensions as the raster
+
+# test 1 is just the same elevation raster
+png("../data/processed/interim/test1.png", width = img_size$width, height = img_size$height)
+par(mar = c(0,0,0,0))
+raster::image(elev_ras, axes = F, col = rev(terrain.colors(1000)))
+dev.off()
+
+
+
+```
+
+
+## Calculate rayshades
+
+```{r}
+# read in custom overlay raster
+elev_overlay <-  png::readPNG("../data/processed/interim/test1.png")
+
+# calculate rayshader layers
+ambmat <- ambient_shade(elev_mat, zscale = 30)
+raymat <- ray_shade(elev_mat, zscale = 30, lambert = TRUE)
+watermap <- detect_water(elev_mat)
+
+# define zscale
+zscale <- 10
+
+```
+
+## 2D Plots - Raster Overlay
+
+```{r}
+# plot 2D
+elev_mat %>%
+  sphere_shade(texture = "imhof4") %>%
+  add_water(watermap, color = "imhof4") %>%
+  add_shadow(raymat, max_darken = 0.5) %>%
+  add_shadow(ambmat, max_darken = 0.5) %>%
+  add_overlay(elev_overlay, alphalayer = 0.5) %>%
+  plot_map()
+
+```
+
+
+## 3D Plot - No Overlay
+```{r}
+# clear plot
+rgl::clear3d()
+
+# plot that 3d map!
+elev_mat %>%
+  sphere_shade(texture = "imhof1") %>%
+  add_water(watermap, color = "imhof1") %>%
+  add_shadow(raymat, max_darken = 0.5) %>%
+  add_shadow(ambmat, 0) %>%
+  plot_3d(elev_mat, zscale = zscale, windowsize = c(1200, 1000),
+          water = TRUE, wateralpha = 0.5,
+          theta = -120, phi = 20, zoom = 0.65, fov = 0)
+
+
+render_snapshot()
+```
+
+
+## 3D Plot - Raster Overlay
+```{r}
+# Plot 3D - elevation
+
+
+
+# clear plot
+rgl::clear3d()
+
+# plot that 3d map!
+elev_mat %>%
+  sphere_shade(texture = "imhof1") %>%
+  add_water(watermap, color = "imhof1") %>%
+  add_shadow(raymat, max_darken = 0.5) %>%
+  add_shadow(ambmat, 0) %>%
+  add_overlay(elev_overlay, alphalayer = 0.5) %>%
+  plot_3d(elev_mat, zscale = zscale, windowsize = c(1200, 1000),
+          water = TRUE, wateralpha = 0.5,
+          theta = -120, phi = 20, zoom = 0.65, fov = 0)
+
+
+render_snapshot()
+```
+
+# Adding points - Define Functions
+
+```{r}
+# pull out sample points and remove NA values
+samps <- point_data
+
+# define function to assign viridis colors to each value and store in dataframe
+
+map_viridis <- function(column = "shore_dist", dataframe) {
+  # returns the data frame, with new column plot_color
+  # column = "shore_dist"
+  # dataframe = samps
+  vec <- dataframe[[column]]
+  # warn if NAs exist in data
+  if(any(is.na(vec))){
+    warning("NAs present in vector, dropping NA")
+  }
+  vec <- vec[!is.na(vec)]
+  
+  # expand to allow for decimal precision
+  vector_expanded <-round(vec, 1) * 10
+  vector_exp_range <- max(vector_expanded) - min(vector_expanded)
+  
+  # get vector of colour values for all possible decimals between min and max value
+  colour_vector <- viridis(vector_exp_range + 1) 
+  
+  # match each number in vec with the appropriate color
+  picked_colors <-sapply(vec, FUN = function(x) colour_vector[x * 10 - min(vector_expanded) +1])
+  
+  # return vector and color as dataframe
+  result <-data.frame(vec,  picked_colors)
+  colnames(result) <- c(column, "plot_color")
+  return(left_join(dataframe, result))
+}
+
+# get viridis colors for shore_dist at each point
+samps <- map_viridis(column = "elevation", dataframe = samps)
+
+# Define function to add points to rayshader plot
+# this function came from library geoviz
+# "fixed" add_gps by cutting out all the line related items, and having it plot points exclusively
+# also just made it so params get written out and I can rgl:: spheres3d separately
+
+custom_add_points <- function (raster_input, lat, long, alt, zscale, 
+          colour = "red", alpha = 0.8, 
+          raise_agl = 0, point_size = 20, rad = 2) {
+  # convert lat long to rayshader x/y
+  coords <- latlong_to_rayshader_coords(raster_input, lat, 
+                                        long)
+  distances_x <- coords$x
+  distances_y <- coords$y
+  
+  # create spatial points dataframe from lat long and match to elevation raster projection
+    sp_gps <- sp::SpatialPoints(cbind(long, lat), proj4string = sp::CRS("+init=epsg:4326"))
+    sp_gps <- sp::spTransform(sp_gps, sp::CRS(as.character(raster::crs(raster_input))))
+    
+  # extract raster data at gps points to get base elevation
+    gps_ground_line <- raster::extract(raster_input, sp_gps)
+  
+  # raise points by defined amount
+    track_altitude <- gps_ground_line + raise_agl
+    
+  # return list of points data
+    return(list("x" = distances_x, "y" = track_altitude/zscale, "z" = -distances_y, "col" = colour, "alpha" = alpha, "size" = point_size, "radius" = rad))
+
+}
+
+# run function to convert points for 3d plotting with rgl::points3d
+sites_spheres <- custom_add_points( elev_ras,
+                                        samps$latitude_deg,
+                                        samps$longitude_deg,
+                                        raise_agl = 10,
+                                        zscale = zscale,
+                                        colour = samps$plot_color,
+                                        point_size = 10,
+                                        rad = 2)
+
+```
+
+
+## Adding Points - 3D Plot
+
+
+```{r}
+## still version for checking image quality
+
+# clear plot
+rgl::clear3d()
+
+# generate 3D map with overlay
+elev_mat %>%
+  sphere_shade(texture = "imhof1") %>%
+  add_water(watermap, color = "desert") %>%
+  add_shadow(raymat, max_darken = 0.5) %>%
+  add_shadow(ambmat, 0) %>%
+  add_overlay(elev_overlay, alphalayer = 0.5) %>%
+  rayshader::plot_3d(
+    elev_mat,
+    zscale = zscale,
+    windowsize = c(1200, 1000),
+    water = F,
+    wateralpha = 0.2,
+    theta = 237,
+    phi = 25,
+    zoom = 0.55,
+    fov = 0,
+    shadow = T
+    )
+
+# add points
+rgl::points3d(sites_spheres$x, sites_spheres$y, sites_spheres$z, 
+                   color = sites_spheres$col, alpha = sites_spheres$alpha, size = sites_spheres$size)
+render_snapshot()
+
+```

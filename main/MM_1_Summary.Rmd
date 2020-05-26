@@ -62,30 +62,7 @@ The 'sample_name' column links sample prep and collection metadata.
 ```{r}
 
 # sample metadata
-raw_samples  <- fread("../data/raw/sample/unique_waimea_hiseq_samples_emp.tsv", sep = "\t", header = T)
-
-# library prep metadata
-prep_16S <- fread("../data/raw/sample/combined_hiseqs_bioblitz_mapping - 16S_prep_info.tsv", sep = "\t", header = T)
-prep_ITS <- fread("../data/raw/sample/combined_hiseqs_bioblitz_mapping - ITS_prep_info.tsv", sep = "\t", header = T)
-
-head(raw_samples)
-head(prep_16S)
-
-
-all_16S <-left_join(prep_16S, raw_samples)
-all_ITS <- left_join(prep_ITS, raw_samples)
-
-all_16SandITS <- rbind(all_16S, all_ITS)
-
-n_distinct(raw_samples$sample_name)
-n_distinct(prep_16S$sample_name)
-
-
-write.csv(all_16S, "combined_prep_sample_metadata_16S.csv", row.names = F)
-
-write.csv(all_ITS, "combined_prep_sample_metadata_ITS.csv", row.names = F)
-
-write.csv(all_16SandITS, "combined_prep_sample_metadata_16SandITS.csv", row.names = F)
+samples <- fread("../data/raw/sample/unique_waimea_hiseq_samples_emp.tsv")
 
 ```
 
@@ -172,10 +149,10 @@ Filter those samples out.
 
 ```{r}
 # projects
-unique(raw_samples$project_name)
+unique(samples$project_name)
 
 # filter by project
-samples <- raw_samples[project_name %in% c("Keck","JoshMS"),]
+samples <- samples[project_name %in% c("Keck","JoshMS"),]
 
 
 

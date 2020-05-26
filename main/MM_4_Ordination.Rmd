@@ -1,5 +1,5 @@
 ---
-title: "Microbial Mapping - NMDS"
+title: "Microbial Mapping - 16S NMDS"
 output:
   html_document:
     df_print: paged
@@ -20,6 +20,7 @@ library(data.table)
 library(parallel)
 library(viridisLite)
 
+set.seed(seed = 2020)
 
 # set cores for parallel tasks
 if( is.na( detectCores() )  ){
@@ -168,7 +169,7 @@ ordinate_habitat <- function(x){
 }
 
 # run function
-habitat_plots <- lapply(habitat_types, ordinate_subtype)
+habitat_plots <- lapply(habitat_types, ordinate_habitat)
 
 # display plots
 habitat_plots
