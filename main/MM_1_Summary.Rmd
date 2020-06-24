@@ -233,7 +233,7 @@ p<- ggplot(data=habidata, aes(x=reorder(common_name,id), y = N, fill=trophic)) +
   ylim(0,150)
 
 print(p)
-ggsave(file = paste("../outputs/figures/_", habitats[a],"_barplot.pdf",sep = ""),
+ggsave(file = paste("../outputs/figures/summary", habitats[a],"_barplot.pdf",sep = ""),
        plot = p, device = "pdf", width = 10, height = 10, dpi = 400)
 
 }
@@ -322,7 +322,7 @@ geom_text(data=label_data, aes(x=factor(id), y=tot+10, label=common_name, hjust=
 #
 p
 # 
-ggsave("../outputs/figures/habitat_sample_type_circleplot.pdf",plot = p, device = "pdf", width = 15, height = 10, dpi = 400)
+ggsave("../outputs/figures/summary/habitat_sample_type_circleplot.pdf",plot = p, device = "pdf", width = 15, height = 10, dpi = 400)
 
 
 ```
@@ -345,7 +345,7 @@ fig <- plot_ly(data = sunburstDF, ids = ~ids, labels= ~labels, parents = ~parent
 fig
 
 # use orca command line interface to produce static pdf (produces errors, but works anyways)
-orca(fig, file = "../outputs/figures/summary_sunburst.pdf",format ="pdf") 
+orca(fig, file = "../outputs/figures/summary/summary_sunburst.pdf",format ="pdf") 
 ```
 
 ## Data subsets

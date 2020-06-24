@@ -11,10 +11,10 @@ Pipeline output files are read in, written out as cleaned flat files, and read b
 ```{r}
 library(data.table)
 library(phyloseq)
-if(getwd() != "/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
-  {
-setwd("/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
-}
+# if(getwd() != "/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
+#   {
+# setwd("/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
+# }
 
 ```
 
@@ -29,7 +29,7 @@ pipeline output data files for 16s and its
 
 
 # sample metadata
-raw_samples  <- fread("../data/raw/sample/unique_waimea_hiseq_samples_emp.tsv",
+raw_samples  <- fread("../data/processed/interim/unique_waimea_hiseq_samples_emp_spatial.tsv",
                       sep = "\t", header = T)
 
 # library prep metadata
@@ -50,12 +50,16 @@ fwrite(meta_its,"../data/processed/interim/combined_prep_sample_metadata_its.csv
 fwrite(meta_all,"../data/processed/interim/combined_prep_sample_metadata_16sandits.csv")
 
 # 16s data
-abund_16s_file <- "../data/raw/abundance_table_97.shared"
-tax_16s_file  <- "../data/raw/annotations_97.taxonomy"
+abund_16s_file <- "../data/raw/sequence/waimea_16S_v1/abundance_table_100.shared"
+tax_16s_file  <- "../data/raw/sequence/waimea_16S_v1/annotations_100.taxonomy"
 meta_16s_file <- "../data/processed/interim/combined_prep_sample_metadata_16s.csv"
 
 
 # its data
+
+abund_its_file <- "../data/raw/sequence/waimea_ITS_v1/Results/abundance_table_100.tsv"
+tax_its_file   <- "../data/raw/sequence/waimea_ITS_v1/Results/annotations_sintax_100.tsv"
+meta_its_file  <- "../data/processed/interim/combined_prep_sample_metadata_its.csv"
 
 ```
 
@@ -92,10 +96,31 @@ saveRDS(mm_16s, file = "../data/processed/cleaned/mm_16s.rds")
 rm(mm_16s)
 gc()
 
+source("../src/clean_and_query_ITS.R")
+
+## clean_its_tables outputs a list of cleaned versions of each dataframe
+## 'cleaning' means renaming some columns and generally tidying the pipeline outputs
+## sequences are not affected
+## names are checked to make sure they agree between all files
+## the function writes out each cleaned file as a csv
+
+mm_its <- clean_ITS_tables(
+                   abundance_file = abund_its_file,
+                  taxonomy_file = tax_its_file,
+                  metadata_file = meta_its_file,
+                  description = "mm_its_hiseqs",
+                  output_dir = "../data/processed/cleaned",
+                  id_column = "sequencing_id",
+                  cull = list(min.num = 4, min.abund = 500, min.single.abund = 1000)
+)
+
+
 ```
 
 ## Create Phyloseq Object
 The function takes the csv files written out above. Each file is read in, re-organized for phyloseq object, and finally a phyloseq object is created.
+
+### 16S Phyloseq
 
 ```{r}
 # make phyloseq
@@ -136,5 +161,5 @@ rm(MM_16S_phy)
 
 
 ```
-
+### ITS Phyloseq
 

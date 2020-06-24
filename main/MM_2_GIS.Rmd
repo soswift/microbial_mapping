@@ -15,7 +15,7 @@ There are several large spatial libraries required for this analysis.
 
 ```{r echo=FALSE}
 # spatial
-spatial_libs <- c("rgdal","rayshader","MASS","ggmap", "FedData","raster","sp", "automap","geoviz","sf")
+spatial_libs <- c("rgdal","rayshader","MASS","ggmap", "FedData","raster","sp", "automap","geoviz","sf", "ggspatial","rnaturalearth","rnaturalearthdata")
 
 # general
 general_libs <- c("data.table","dplyr","tidyr","ggplot2","viridisLite","data.table")
@@ -104,6 +104,20 @@ bbox_extent <- polygon_from_extent(raster::extent(bbox$p1$long, bbox$p2$long, bb
 
 ```
 
+## Set Standard Projection for maps
+
+It's very important that all map layers have the same projection when plotting a map.
+Data sources will often have different projections for their map data.
+
+We need to make sure we read in data in the correct projection, which involves checking metadata from the data source.
+If cropping to a certain map extent, we need to crop using the right projection.
+Finally, when plotting, we need to first transform all data to a uniform projection.
+
+```{r}
+# set the standard projection to lat long, grs80, WGS84
+std_proj <- crs(bbox_extent)
+
+```
 
 
 # Sat Images
@@ -123,12 +137,30 @@ I will try to transition all mapping to sf package instead of ggmaps.
 
 
 ```{r}
-# pull base map images
+# ggmap: pull base map images
 base_data <- get_map(location = bbox$ggmap, maptype = c("terrain"), zoom = 12)
 # plot base map
 base_map  <- ggmap(base_data)
 
 base_map
+
+# rnaturalearth: pull coastline basemap
+coastline <- ne_countries(scale = "large", returnclass = "sf")
+
+ggplot()+
+  geom_sf(data=coastline)+
+  coord_sf(xlim = c(limits[c(1,3)]), ylim = c(limits[c(2,4)])) 
+
+# hawaii coastline (state GIS, projection utm-4, nad83)
+hi_coast         <- st_read("../data/raw/spatial/hawaii_coastline/coast_n83.shp", crs = "epsg:26904")
+
+# project to std proj
+hi_coast <-st_transform(hi_coast,std_proj)
+  
+ggplot()+
+  geom_sf(data=hi_coast) +
+  coord_sf(xlim = c(limits[c(1,3)]), ylim = c(limits[c(2,4)])) 
+
                     
 ```
 
@@ -154,20 +186,35 @@ Notes: You can plot rasters onto ggplot maps (e.g. ggmaps), but a couple of issu
 ### Plot Elevation
 ```{r}
 ## Elevation
+
+# get extent (federal 1 arc second elevation, lat long GRS80)
+elev_extent <- spTransform(bbox_extent, CRSobj = "+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs ")
+
 # pull elevation data in raster format
 elev_ras <- get_ned(template = bbox_extent, label = "elev", res = "1", force.redo = F,raw.dir = "../data/raw/spatial",extraction.dir = "../data/processed/interim/")
+crs(elev_ras)
 
+
+# project into standard format
+elev_ras <- projectRaster(elev_ras, crs=std_proj)
+
+
+
+crs(elev_ras)
 # you can plot rasters with built in plot function
 plot(elev_ras)
 
 
+
 # and convert raster to data table and matrix for making other kinds of plots
+# crop to coastline extent (we don't need elevation of the ocean)
 elev_dt  <- raster::as.data.frame(elev_ras, xy=T) %>% as.data.table()
 elev_mat <- as.matrix(elev_ras) %>% t()
 
 # plot elevation data table in ggplot
 elev_map <- ggplot() +
-            geom_raster(data= elev_dt, mapping =aes(x = x, y = y, fill = elev_NED_1))
+            geom_raster(data= elev_dt, mapping =aes(x = x, y = y, fill = elev_NED_1))+
+            coord_sf(xlim = c(limits[c(1,3)]), ylim = c(limits[c(2,4)])) 
 elev_map
 
 ```
@@ -193,11 +240,9 @@ Monique Chyba in the math department was working on taking fine grain rainfall d
 # http://rainfall.geography.hawaii.edu/rainfall.html
 #Extract data from rasters using sampling coordinates
 
-set_proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84"
-
 
 # read annual rainfall txt file as raster
-rain_ras <- raster("../data/raw/spatial/rfgrid_mm_oahu_ann.txt", crs = set_proj)
+rain_ras <- raster("../data/raw/spatial/rfgrid_mm_oahu_ann.txt", crs = std_proj)
 
 # crop to correct bbox
 rain_ras <- crop(rain_ras, bbox_extent)
@@ -226,6 +271,76 @@ meta$rainfall <-  raster::extract(x = rain_ras,
 ```
 
 
+### LandSat Raster
+Read in landsat images to use as basemap.
+These images are geotiffs with 3 bands (R,G,B).
+Plotting 3 band rasters is really hard in ggplot.
+
+1) read in full sat image raster with all 3 bands
+2) crop to extent of map
+3) transform 3 band raster to single RGB value in each cell
+3) plot raster
+
+```{r}
+
+# function crop_sat will read in RGB landsat raster, crop it to map extent, write out as png
+
+# use this fuction to define image size
+
+define_image_size <- function(bbox, major_dim = 400) {
+  
+  # calculate aspect ration (width/height) from lat/long bounding box
+  aspect_ratio <- abs((bbox$p1$long - bbox$p2$long) / (bbox$p1$lat - bbox$p2$lat))
+  
+  # define dimensions
+  img_width <- ifelse(aspect_ratio > 1, major_dim, major_dim*aspect_ratio) %>% round()
+  img_height <- ifelse(aspect_ratio < 1, major_dim, major_dim/aspect_ratio) %>% round()
+  
+  size_str <- paste(img_width, img_height, sep = ",")
+  
+  list(height = img_height, width = img_width, size = size_str)}
+
+
+# calculate image dimensions based on size of elevation raster
+img_size <- define_image_size(bbox = bbox, major_dim = max(dim(elev_ras)))
+
+crop_sat <-function(rast_file = "../data/raw/spatial/oahu_landsat/Oahu_Landsat_15m.jp2", extent = bbox_extent){
+  rast <- stack(rast_file)
+  
+  rast_proj   <- crs(rast)  
+  rast_extent <- spTransform(extent, CRSobj = rast_proj)
+  
+  small_rast <- crop(rast, rast_extent)
+  
+  message("writing out cropped png")
+  
+  png("../data/processed/interim/sat_basemap.png", width = img_size$width, height = img_size$height)
+  par(mar = c(0,0,0,0))
+  plotRGB(small_rast)
+  dev.off()
+  
+  return(small_rast)
+}
+
+sat_ras <- crop_sat()
+
+plotRGB(sat_ras)
+
+```
+
+
+
+## Write Out Metadata With Raster Data
+<!-- Write out the metadata with the additional columns extracted from the raster data. -->
+- rainfall = mean annual rainfail in mm
+- elevation = elevation in m
+
+```{r}
+fwrite(meta, "../data/processed/interim/unique_waimea_hiseq_samples_emp_spatial.tsv", sep = "\t")
+
+
+```
+
 
 # Points
 Points being plotted onto the map will be placed based on latitude and longitude.
@@ -249,8 +364,9 @@ spatial_cols <- c("site_name", "site_code" ,"site_type","latitude_deg","longitud
 # Use data.table to remove rows with no spatial data, count rows (i.e. samples), and return spatial columns.
 # in the future, replace ".N" with other functions to generate sample summary data for each site.
 
-point_data <- meta[ , .N, by = spatial_cols]
+point_data <- meta[habitat != "Riverine" , .N, by = spatial_cols]
 
+point_data$habitat <- sub("Terrestrial", "Terrestrial/Riverine",point_data$habitat)
 
 # simple point map with normal base layer
 base_point_map  <- base_map +
@@ -295,31 +411,113 @@ Luckily, I already have the shapefile.
 streams      <- st_read('../data/raw/spatial/darstreams.kml')
 waimea_river <- streams[streams$STREAM_NAM == "Waimea R",]
 
+test <- waimea_river[10,]
+
 plot(st_geometry(waimea_river))
 
+plot(st_geometry(test))
+
 ggplot()+
-  geom_sf(data = waimea_river, color = "blue")
+  geom_sf(data = hi_coast)+
+  geom_sf(data = waimea_river, color = "blue")+
+  coord_sf(xlim = c(limits[c(1,3)]), ylim = c(limits[c(2,4)])) 
 
 ```
 
 
-## Plot Points and Lines
+## Plot Points, Lines, Rasters
+
+For the manuscript figure map, add sampling plots as points, streams as lines, and a raster to indicate elevation/rainfall/temperature gradient.
+Basically, all of the earlier pieces put together
 
 ```{r}
 # Plot on plain background
 ggplot() +  
+  geom_sf(data = hi_coast ) +
   geom_sf(data = waimea_river, color = alpha("blue",0.5)) +
-  geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data)
+  geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data)+
+  coord_sf(xlim = c(limits[c(1,3)]), ylim = c(limits[c(2,4)])) 
+
+
+
+
+# Set up a vector for determining raster transparency
+# i.e. I want the raster to be see-through at 0 elevation
+
+
+
+# Mask (i.e. crop) elevation raster based on coastline
+# don't need elevation for the ocean
+elev_ras_coast <- mask(elev_ras, hi_coast)
+elev_dt_coast  <- raster::as.data.frame(elev_ras_coast, xy=T) %>% as.data.table()
+elev_dt_coast <- elev_dt_coast %>% mutate(rast_alpha = ifelse(is.na(elev_NED_1) ,0,1))
+
+
 
 # Plot on raster background
-ggplot() +  
-  geom_raster(data= elev_dt, mapping =aes(x = x, y = y, fill = elev_NED_1))+
-  geom_sf(data = waimea_river, color = alpha("blue",0.5)) +
-  geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data)
-
+p1<- ggplot() + 
+        # raster
+        geom_raster(data= elev_dt_coast, mapping =aes(x = x, y = y, fill = elev_NED_1),  alpha = elev_dt_coast$rast_alpha )+
+        scale_fill_viridis_c(option = "viridis", direction = 1) +
   
+        # coastline
+        geom_sf(data = hi_coast, fill = NA, color = "darkgray", size = 1)+
+  
+        # river
+        geom_sf(data = waimea_river, color = alpha("white",0.8)) +
+  
+        # points
+        geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data, shape = 17) +
+        scale_color_manual(values = c("orange","red")) +
+  
+        # annotations
+        annotation_scale(location = "bl", width_hint = 0.4)+
+        annotation_north_arrow(height = unit(0.5,"cm"), width = unit(0.5,"cm"), pad_y = unit(0.75,"cm"),style = north_arrow_minimal("text_size = 8"))+
+  
+        # map settings
+        coord_sf(xlim = c(limits[c(1,3)]), ylim = c(limits[c(2,4)])) +
+        theme_void()+
+        theme(panel.background = element_rect(fill = "lightblue")) +
+        labs(fill = "Elevation (m)", color = "Habitat") 
+
+p1
+
+ggplot()+
+  geom_sf(data= hi_coast)
+
+# With Oahu inset
+oahu_limits <- c(-158.305366, 21.212964, -157.624682, 21.766562)
+
+p2 <-ggplot()+
+      # coastline
+      geom_sf(data = hi_coast) +
+      # points
+      geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data, size = 0.5, shape = 17) +
+      scale_color_manual(values = c("orange","red")) +
+      # rectangle
+      geom_rect(aes(xmin = limits[1] - 0.003, xmax = limits[3] + 0.003, ymin = limits[2] - 0.003, ymax = limits[4] + 0.003), color = "gray10", fill = NA)+
+      # map settings
+      theme_void()+
+      theme(legend.position = "none")+
+      coord_sf(xlim = c(oahu_limits[c(1,3)]), ylim= c(oahu_limits[c(2,4)])) 
+
+      
+p2
+
+p1 + annotation_custom(
+      grob = ggplotGrob(p2),
+      ymin = 21.63,
+      ymax = 21.65,
+      xmin = -157.98,
+      xmax = -157.95
+  )
+
+ggsave("../outputs/figures/maps/points_elev_stream_map.png")
 
 ```
+
+
+
 
 # 3D Rayshading
 Pulling code from ST_rayshading.
@@ -513,15 +711,44 @@ custom_add_points <- function (raster_input, lat, long, alt, zscale,
 
 }
 
-# run function to convert points for 3d plotting with rgl::points3d
-sites_spheres <- custom_add_points( elev_ras,
-                                        samps$latitude_deg,
-                                        samps$longitude_deg,
+# run function to convert points for 3d plotting with rgl::points3d or rgl::lines3d
+## Sites
+sites <- custom_add_points(
+            elev_ras,
+            samps$latitude_deg,
+            samps$longitude_deg,
+            raise_agl = 10,
+            zscale = zscale,
+            colour = samps$plot_color,
+            point_size = 10,
+            rad = 2
+            )
+
+## Rivers
+rivers <- st_coordinates(waimea_river) %>% as.data.frame()
+
+river_list <- unique(rivers$L1)
+river_coords <-list()
+
+river_coords <- lapply(river_list, function(x){
+                    a_river <- rivers[rivers$L1 == i,]
+                    custom_add_points(elev_ras,
+                                        a_river[,2],
+                                        a_river[,1],
                                         raise_agl = 10,
                                         zscale = zscale,
-                                        colour = samps$plot_color,
-                                        point_size = 10,
-                                        rad = 2)
+                                        colour = "blue"
+                                        )
+          })
+            
+test <-  custom_add_points(elev_ras,
+                                        rivers[,2],
+                                        rivers[,1],
+                                        raise_agl = 10,
+                                        zscale = zscale,
+                                        colour = "blue"
+                                        )
+
 
 ```
 
@@ -556,8 +783,28 @@ elev_mat %>%
     )
 
 # add points
-rgl::points3d(sites_spheres$x, sites_spheres$y, sites_spheres$z, 
-                   color = sites_spheres$col, alpha = sites_spheres$alpha, size = sites_spheres$size)
+rgl::points3d(sites$x, sites$y, sites$z, 
+                   color = sites$col, alpha = sites$alpha, size = sites$size)
+
+
+
+rgl::lines3d(test$x, test$y, test$z, color = "blue", lwd = 1, alpha = 1)
+
+
+for(a in seq_along(river_coords)) {
+  river <- river_coords[[a]]
+  rgl::lines3d(river$x, river$y, river$z, color = "blue", lwd = 1, alpha = 1)
+}
+
 render_snapshot()
+render_scalebar(limits=c(0, 1, 5),label_unit = "km",position = "N", y=10, scale_length =0.25, color_first = "darkgray", radius = 1)
+```
+
+# Add Lines
+I want to add the waimea river as a line floating above the map.
+
+
+```{r}
 
 ```
+

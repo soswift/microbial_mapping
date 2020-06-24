@@ -1,10 +1,9 @@
 
 
-# read and clean 16S ------------------------------------------------------
-# setwd("~/Desktop/R/CMAIKI_clean_and_query/bacterial_16S/")
-# clean 16S pipeline outputs for R analyses
+# read and clean ITS ------------------------------------------------------
+# clean ITS pipeline outputs for R analyses
 
-clean_16S_tables <- function(abundance_file = NULL,
+clean_ITS_tables <- function(abundance_file = NULL,
                              taxonomy_file  = NULL,
                              metadata_file  = NULL,
                              description    = NULL,
@@ -21,18 +20,16 @@ clean_16S_tables <- function(abundance_file = NULL,
   
   #### *** Test Case COMMENT OUT UNLESS TESTING ***
 
-  abundance_file = abund_16s_file
-  taxonomy_file = tax_16s_file
-  metadata_file = meta_16s_file
-  description = "mm_16s_hiseqs"
-  output_dir = "../data/processed/cleaned"
-  id_column = "sequencing_id"
-  cull = list(min.num = 4, min.abund = 500, min.single.abund = 1000)
-  
+   abundance_file <- "../data/raw/sequence/waimea_ITS_v1/Results/abundance_table_100.tsv"
+   taxonomy_file   <- "../data/raw/sequence/waimea_ITS_v1/Results/annotations_sintax_100.tsv"
+   metadata_file  <- "../data/processed/interim/combined_prep_sample_metadata_its.csv"
+     
+    description = "MM_ITS_hiseqs"
+    output_dir = "../data/processed/cleaned"
+    id_column = "sequencing_id"
+   # 
+    cull = list(min.num = 3, min.abund = 500, min.single.abund = 1000 )
   #### ** TEST END ***
-   
-   
-   
    
   # check input files
   if(!file.exists(abundance_file)){
@@ -48,7 +45,7 @@ clean_16S_tables <- function(abundance_file = NULL,
   
   ## Read in tables
   message("reading abundance")
-  abund <- fread( abundance_file, header = T, sep = "\t")
+  abund <- fread( abundance_file, header = T, sep = ",")
   
   message("reading taxonomy")
   tax   <- fread( taxonomy_file, header = T, sep = "\t")
@@ -64,14 +61,20 @@ clean_16S_tables <- function(abundance_file = NULL,
                       c( "kingdom", "phylum", "class", "order","family","genus" ),
                       sep = ";")
   
-  # Clean abundance table: Cut down id name and delete numOtus
-  abund$Group <- sub(".*(1\\d{5}).*","\\1", abund$Group, perl = T)
-    abund[, c("numOtus","label"):=NULL]
+  # Clean abundance table: pull out id names and esv names
+  Group <- colnames(abund)
+  ESV   <- abund$V1
   
+  # transpose and re-assign names
+  abund[,V1:=NULL]
+  abund <- transpose(abund)
+  
+  colnames(abund) <- ESV
+  abund$Group     <- Group
   
   # Check abundance and taxonomy have the same OTUs
   
-  if( !all( colnames(abund)[-c(1,2)] %in% tax$OTU)){ # test
+  if( !all( colnames(abund)[-1] %in% tax$OTU)){ # test
           warning("*** WARNING Abundance and taxonomy have different OTUs")   # no
   } 
   else {
@@ -167,7 +170,7 @@ clean_16S_tables <- function(abundance_file = NULL,
 
 
 
-# summarize 16S sequencing success --------------------------------------------------
+# summarize ITS sequencing success --------------------------------------------------
 pass_fail <- function(clean_tables_list = NULL, id_column = NULL){
 
           

@@ -30,10 +30,10 @@ if( is.na( detectCores() )  ){
 }
 
 # set working directory
-if(getwd() != "/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
-  {
-setwd("/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
-}
+# if(getwd() != "/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
+#   {
+# setwd("/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
+# }
 
 
 # set ggplot theme
@@ -48,7 +48,7 @@ scale_fill_discrete <-  function(palname=pal_d, ...){
     scale_fill_brewer(palette=palname, ...)
 }
 
-pal_c = "c"
+pal_c = "plasma"
 uniform_gradient_color <- function(palname = pal_c){
   scale_color_viridis_c(option = palname)
 }
@@ -79,18 +79,29 @@ MM_16S_phy
 meta <- MM_16S_phy@sam_data %>% as.matrix %>% as.data.table
 
 
+sample_number_by_site <- meta[, .N, by = .(site_name, habitat)][order(site_name, habitat)]
+fwrite(sample_number_by_site, "../data/processed/interim/sample_number_by_site.csv")
+
+
 ```
 
 
 
 
 ## all sample nmds
-run nmds on all samples
+run nmds on all samples, except controls
 
 ### Ordinate
 
 ```{r}
+# subset to remove controls (no metadata in the host column)
+nsamples(MM_16S_phy)
+
+MM_16S_phy <- subset_samples(MM_16S_phy, host != "")
+
+
 # ordinate all phyloseq object
+
 MM.ord <- ordinate(physeq = MM_16S_phy,
                    method =  "NMDS",
                    distance = "bray")
@@ -102,17 +113,28 @@ MM.ord <- ordinate(physeq = MM_16S_phy,
 
 # plot by sample and habitat
 p <- plot_ordination(MM_16S_phy, MM.ord, type="samples", color = "habitat", shape = "host")
-p <- p + scale_shape_discrete(solid = T)
+p <- p + scale_shape_discrete(solid = T)+
+      ggtitle("All Samples, Bray Curtis Distance, NMDS - By Habitat")
 p
 
-ggsave("../outputs/figures/nmds/all_samples_habitat_nmds.png")
+ggsave("../outputs/figures/nmds/all_samples_habitat_nmds.pdf")
 
 
 p <- plot_ordination(MM_16S_phy, MM.ord, type="samples", color = "trophic", shape = "host")
-p <- p + scale_shape_discrete(solid = T) 
+p <- p + scale_shape_discrete(solid = T)  +
+      ggtitle("All Samples, Bray Curtis Distance, NMDS - By Trophic")
 p
 
-ggsave("../outputs/figures/nmds/all_samples_trophic_nmds.png")
+ggsave("../outputs/figures/nmds/all_samples_trophic_nmds.pdf")
+
+
+p <- plot_ordination(MM_16S_phy, MM.ord, type="samples", color = "elevation", shape = "host") +
+     scale_shape_discrete(solid = T)  +
+     uniform_gradient_color()  +
+      ggtitle("All Samples, Bray Curtis Distance, NMDS - By Elevation")
+p
+
+ggsave("../outputs/figures/nmds/all_samples_elevation_nmds.pdf")
 
 
 ```
@@ -133,15 +155,19 @@ MM.ord <- ordinate(MM,
                    distance = "bray")
 
 # by sample
-p = plot_ordination(MM, MM.ord, type="samples", color = "habitat", shape = "host", title="NMDS, Bray , Transect Samples, All OTUs")
+p = plot_ordination(MM, MM.ord, type="samples", color = "habitat", shape = "host", title="Host-Associated Samples, NMDS, Bray - By Habitat ")
 p + scale_shape_discrete(solid = T)
+
+
+ggsave("../outputs/figures/nmds/all_host_associated_nmds.pdf")
+
 rm(list=c("MM","MM.ord"))
 gc()
 
 ```
 
-
-### by trophic
+## Subsets
+### by habitat
 split up data by habitat and run nmds colored by trophic level for all samples
 
 ```{r}
@@ -178,15 +204,49 @@ habitat_plots
 names(habitat_plots) <- habitat_types
 
 for(i in names(habitat_plots)){
-  ggsave(filename = paste("../outputs/figures/nmds/", i,"_trophic_nmds.png", sep = ""), plot = habitat_plots[[i]])
+  ggsave(filename = paste("../outputs/figures/nmds/habitat", i,"_nmds.pdf", sep = ""), plot = habitat_plots[[i]])
 }
 
 
 
 ```
 
-### by habitat
+### by trophic level
 ```{r}
+
+# list of unique habitats
+trophic_types <- unique(MM_16S_phy@sam_data$trophic)
+
+# function to subset and ordinate each habitat type
+ordinate_troph <- function(x){
+  ## TEST
+ 
+  # superassign
+  troph <<- x
+  
+  # subset and ordinate
+  MM_sub <- subset_samples(MM_16S_phy, trophic == troph)
+  MM.ord <- ordinate(MM_sub, "NMDS", "bray")
+  
+  #plot
+  p <- plot_ordination(MM_sub, MM.ord, type="samples", color = "elevation", shape = "habitat", title= paste("NMDS, Bray,", troph))  +
+    uniform_gradient_color()+
+    scale_shape_discrete(solid = T)
+  return(p)
+}
+
+# run function
+trophic_plots <- lapply(trophic_types, ordinate_troph)
+
+# display plots
+trophic_plots
+
+# save plots
+names(trophic_plots) <- trophic_types
+
+for(i in names(trophic_plots)){
+  ggsave(filename = paste("../outputs/figures/nmds/trpohic_", i,"_nmds.pdf", sep = ""), plot = trophic_plots[[i]])
+}
 
 ```
 
