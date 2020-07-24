@@ -1,0 +1,113 @@
+---
+title: "Microbial Mapping - Heatmaps"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Document Summary
+This code is for generating heatmaps from the waimea hiseq data sets.
+The goal is to visualize nestedness of taxa across trophic levels, sample types, habitats, elevation.
+
+
+## Set Up Environment
+Set a standardized color palettes for plotting and load libraries
+
+
+```{r}
+library(data.table)
+library(heatmap3)
+library(phyloseq)
+library(speedyseq)
+library(gplots)
+
+
+set.seed(2020)
+
+# set ggplot theme
+theme_set(theme_bw())
+
+# set color palettes 
+pal_d = "Dark2"
+scale_colour_discrete <-  function(palname=pal_d, ...){
+  scale_colour_brewer(palette=palname, ...)
+}
+scale_fill_discrete <-  function(palname=pal_d, ...){
+    scale_fill_brewer(palette=palname, ...)
+}
+
+pal_c = "plasma"
+uniform_gradient_color <- function(palname = pal_c){
+  scale_color_viridis_c(option = palname)
+}
+
+```
+
+## Read in phyloseq object
+
+```{r}
+MM_16S_phy <- readRDS("../data/processed/cleaned/MM_16S_phy.rds")
+
+
+```
+
+## Group by trophic
+
+```{r}
+# count samples per trophic level
+meta <- as.data.table( as(sample_data(MM_16S_phy), "matrix"))
+otus <- transpose(as.data.table( as(otu_table(MM_16S_phy), "matrix")), keep.names = "sequencing_id")
+
+meta[, .N, by = trophic]
+
+# merge samples by trophic level, keeping only highest read count
+trophic_phy <- merge_samples(MM_16S_phy, "trophic", fun = sum)
+trophic_phy@otu_table[1:5,1:5]
+
+ntaxa(trophic_phy)
+
+
+# transform to presence absence data
+trophic_phy <- transform_sample_counts(trophic_phy, function(x) ifelse(x == 0,0,1) )
+trophic_phy@otu_table[1:5,1:5]
+
+# pull out matrix
+troph_otus <- as(otu_table(trophic_phy), "matrix")
+troph_otus[,1:5]
+
+# plot heatmap with standard clustering/ordering
+
+pdf(file  = "outputs/clustered_nested_heatmap.pdf", width = 7, height = 5)
+heatmap(troph_otus)
+dev.off()
+```
+
+Reorder columns and rows to show nestedness
+
+```{r}
+# reorder matrix by trophic levels
+trophic_order <- c("Environmental","Omnivore", "PrimaryProducer",  "Detritivore", "Herbivore", "Carnivore", "too broad")
+
+troph_otus <- troph_otus[trophic_order,]
+troph_otus[1:5,1:5]
+
+# count how many samples each OTU is in
+spread_scores <- colSums(troph_otus)
+
+# rank each trophic order and assign score to OTU based on occupancy
+rank_scores <- apply(troph_otus, MARGIN = 2, function(x) sum(x * rev(seq_along(x)) ) )
+
+composite_score <- data.table(OTU_ID = names(spread_scores), spread_score = spread_scores, rank_score = rank_scores)
+composite_score <- composite_score[order(rank_score, spread_score)]
+otu_order <- composite_score$OTU_ID
+
+troph_otus <-troph_otus[, otu_order]
+
+
+pdf(file  = "outputs/ordered_nestedness_heatmap.pdf", width = 7, height = 4)
+par(mar = c(5,4,4,4))
+heatmap(troph_otus, Colv = NA, labCol = NA)
+dev.off()
+
+```
+

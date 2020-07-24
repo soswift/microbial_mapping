@@ -1,6 +1,8 @@
 ---
 title: "Microbial Mapping - Data Import and Clean"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 # Document Summary
@@ -88,6 +90,14 @@ mm_16s <- clean_16S_tables(
                   id_column = "sequencing_id",
                   cull = list(min.num = 4, min.abund = 500, min.single.abund = 1000)
                   )
+
+                
+abund<- mm_16s[["abundance"]]
+
+
+
+object.size(transpose(abund)) %>% print(units = "GB")
+
 
 # write out the list of dataframes as r object
 saveRDS(mm_16s, file = "../data/processed/cleaned/mm_16s.rds")

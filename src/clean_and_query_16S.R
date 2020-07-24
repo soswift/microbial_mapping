@@ -21,13 +21,6 @@ clean_16S_tables <- function(abundance_file = NULL,
   
   #### *** Test Case COMMENT OUT UNLESS TESTING ***
 
-  abundance_file = abund_16s_file
-  taxonomy_file = tax_16s_file
-  metadata_file = meta_16s_file
-  description = "mm_16s_hiseqs"
-  output_dir = "../data/processed/cleaned"
-  id_column = "sequencing_id"
-  cull = list(min.num = 4, min.abund = 500, min.single.abund = 1000)
   
   #### ** TEST END ***
    
@@ -113,7 +106,7 @@ clean_16S_tables <- function(abundance_file = NULL,
     
 
   #If cull is a list, cut down the abundance, and taxonomy files based on listed values
-   if(is.list(cull) && !all(is.null(cull))){
+   if(is.list(cull) & !all(lapply(cull,is.null))){
      message("Culling OTUS from data")
      message( paste("min number of samples for OTU to be present in = ", cull$min.num,
                     "min abundance of OTU to count as being present = ", cull$min.abund,
