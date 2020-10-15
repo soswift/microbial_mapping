@@ -16,98 +16,558 @@ Set a standardized color palettes for plotting and load libraries
 
 ```{r}
 library(data.table)
-library(heatmap3)
 library(phyloseq)
 library(speedyseq)
-library(gplots)
+library(vegan)
+library(pheatmap)
+library(ComplexHeatmap)
+library(dendextend)
+library(dendsort)
+library(viridisLite)
+library(dynamicTreeCut)
 
 
 set.seed(2020)
 
-# set ggplot theme
-theme_set(theme_bw())
-
-# set color palettes 
-pal_d = "Dark2"
-scale_colour_discrete <-  function(palname=pal_d, ...){
-  scale_colour_brewer(palette=palname, ...)
-}
-scale_fill_discrete <-  function(palname=pal_d, ...){
-    scale_fill_brewer(palette=palname, ...)
-}
-
-pal_c = "plasma"
-uniform_gradient_color <- function(palname = pal_c){
-  scale_color_viridis_c(option = palname)
-}
-
 ```
 
-## Read in phyloseq object
+## Read in data
+Read in the phyloseq object used with other analyses (culled, subsampled, relative abundance).
+To annotate the heatmap with LDA topics model results, read in those csv files too.
+
 
 ```{r}
+# standard phyloseq object containing CMAIKI pipeline data
 MM_16S_phy <- readRDS("../data/processed/cleaned/MM_16S_phy.rds")
 
+# topics model files from Peter Sadowski
+sample_topics_file <- "../data/raw/topics/sample_topics.csv"
+
+asv_topics_file <- "../data/raw/topics/topic_otus.csv"
+
+# read in
+sam_topics <- fread(sample_topics_file)
+asv_topics <- fread(asv_topics_file)
+
+# set column names
+setnames(sam_topics,
+         c("sequencing_id", 
+           paste0("topic_", 1:(ncol(sam_topics) -1 ) )))
+
+setnames(asv_topics,
+         c("asv_name", 
+           paste0("topic_", 1:(ncol(sam_topics) -1) ) ))
+
 
 ```
 
-## Group by trophic
+## A helper function for generating heatmaps
 
 ```{r}
-# count samples per trophic level
-meta <- as.data.table( as(sample_data(MM_16S_phy), "matrix"))
-otus <- transpose(as.data.table( as(otu_table(MM_16S_phy), "matrix")), keep.names = "sequencing_id")
-
-meta[, .N, by = trophic]
-
-# merge samples by trophic level, keeping only highest read count
-trophic_phy <- merge_samples(MM_16S_phy, "trophic", fun = sum)
-trophic_phy@otu_table[1:5,1:5]
-
-ntaxa(trophic_phy)
 
 
-# transform to presence absence data
-trophic_phy <- transform_sample_counts(trophic_phy, function(x) ifelse(x == 0,0,1) )
-trophic_phy@otu_table[1:5,1:5]
+merge_by_group <- function(phyloseq_obj, group){
+# merge samples by a group, summing read acounts
+group_phy <- merge_samples(phyloseq_obj, group, fun = sum)
 
 # pull out matrix
-troph_otus <- as(otu_table(trophic_phy), "matrix")
-troph_otus[,1:5]
+group_otus <- as(otu_table(group_phy), "matrix")
 
-# plot heatmap with standard clustering/ordering
+return(group_otus)
+}
 
-pdf(file  = "outputs/clustered_nested_heatmap.pdf", width = 7, height = 5)
-heatmap(troph_otus)
-dev.off()
+
 ```
 
+
+## Group by trophic for nestedness heatmap
 Reorder columns and rows to show nestedness
 
 ```{r}
-# reorder matrix by trophic levels
-trophic_order <- c("Environmental","Omnivore", "PrimaryProducer",  "Detritivore", "Herbivore", "Carnivore", "too broad")
 
-troph_otus <- troph_otus[trophic_order,]
+# plot heatmap with standard clustering/ordering
+troph_otus <- merge_by_group(MM_16S_phy, "trophic")
+
+troph_otus <- decostand(troph_otus, method = "pa")
+
+pdf(file  = "outputs/heatmap/clustered_nested_heatmap.pdf", width = 7, height = 5)
+pheatmap(troph_otus)
+dev.off()
+
+# count samples per trophic level
+meta <- as.data.table( as(sample_data(MM_16S_phy), "matrix"))
+otus <- transpose(as.data.table( as(otu_table(MM_16S_phy), "matrix")),
+                  keep.names = "sequencing_id")
+
+meta[, .N, by = trophic]
+
+# reorder matrix by trophic levels
+trophic_order <- c("Environmental",
+                   "PrimaryProducer",
+                    "Omnivore",
+                   "Detritivore",
+                   "Herbivore",
+                   "Carnivore")
+
+troph_otus <- troph_otus[trophic_order, ]
 troph_otus[1:5,1:5]
 
 # count how many samples each OTU is in
 spread_scores <- colSums(troph_otus)
 
-# rank each trophic order and assign score to OTU based on occupancy
+# assign each OTU a weighted score based on its presence in different trophic levels
+# lower trophic levels get a higher score to give figure a right-aligned nested structure
+
 rank_scores <- apply(troph_otus, MARGIN = 2, function(x) sum(x * rev(seq_along(x)) ) )
 
-composite_score <- data.table(OTU_ID = names(spread_scores), spread_score = spread_scores, rank_score = rank_scores)
+composite_score <- data.table(OTU_ID = names(spread_scores),
+                              spread_score = spread_scores,
+                              rank_score = rank_scores)
+
 composite_score <- composite_score[order(rank_score, spread_score)]
 otu_order <- composite_score$OTU_ID
 
 troph_otus <-troph_otus[, otu_order]
 
 
-pdf(file  = "outputs/ordered_nestedness_heatmap.pdf", width = 7, height = 4)
+pdf(file  = "outputs/heatmap/ordered_nestedness_heatmap.pdf", width = 7, height = 4)
 par(mar = c(5,4,4,4))
-heatmap(troph_otus, Colv = NA, labCol = NA)
+heatmap(troph_otus,
+        Colv = NA,
+        Rowv = NA,
+        labCol = NA)
 dev.off()
 
+```
+
+## Heatmap to look for sample type aggregations
+
+```{r}
+## Merged by sample type
+type_otus <- merge_by_group(phyloseq_obj = MM_16S_phy,
+                            group = "sample_type")
+
+drow_type <- vegdist(type_otus, method = "bray")
+
+pdf(file  = "outputs/heatmap/sample_type_heatmap.pdf", width = 10, height = 10)
+pheatmap(type_otus,
+         show_colnames = F,
+         clustering_distance_rows = drow_type,
+         scale = "column",
+         clustering_method = "average",
+         color = colorRampPalette(c("navy","white","firebrick3"))(50))
+dev.off()
+
+
+
+```
+
+
+## All samples annotated by sample type
+Let's look at all samples now, annotating by both sample type and new intuitive groupings. This identifies 'good' apriori sample types and indicates the quality of our intuitive groupings.
+
+Update: Based on previous heatmaps, EMPO is being used for sample ontology. To make heatmaps more readable, they are made separately for each habitat. Separation between habitat types has already been confirmed.
+
+Finally, add LDA topics model annotations. 
+
+```{r}
+# pull out OTU data and hellinger transform
+all_otus <- t(as(otu_table(MM_16S_phy), "matrix"))
+all_otus <- decostand(all_otus, method = "hellinger")
+
+# pull out metadata
+all_meta <- as(sample_data(MM_16S_phy), "data.frame")
+
+# pull out taxonomy
+all_tax <- as.data.frame(MM_16S_phy@tax_table@.Data)
+all_tax$asv_name <- row.names(all_tax)
+
+# add topics model results to sample data and ASV taxonomy data
+all_meta <- merge(all_meta, sam_topics, all.x = T)
+all_tax <- merge(all_tax, asv_topics, all.x = T)
+
+# make list of habitats
+habitat_list <- unique(all_meta$habitat)
+
+```
+
+Wrap the heatmap plotting into a function, which can be applied to the different habitats.
+Efficiency could be improved by making a single set of distance matrices, but the current approach offers some extra flexibility.
+
+```{r}
+all_otus[1:5,1:5]
+
+# define funciton that subsets based on metadata and plots a heatmap
+
+subset_and_heatmap <-
+  function(group,
+           metadata_column,
+           otus = all_otus,
+           meta = all_meta,
+           tax = all_tax,
+           tip_annotation = 
+           zscale=T,
+           description=NULL) {
+    
+    # filter metadata where selected metadata column matches the group
+    group_meta <- all_meta[all_meta[[metadata_column]] %in% group, ]
+    
+    # subset otus to match metadata
+    group_otus <- otus[match( group_meta$sequencing_id, row.names(otus)), ]
+    group_otus <- group_otus[rowSums(group_otus) > 0, colSums(group_otus) > 0]
+    
+    # subset taxonomy to match otus
+    group_tax <- tax[match(colnames(group_otus), row.names(tax)), ]
+    
+    # update row names to include sample types
+    new_names <-
+      paste(group_meta$sequencing_id,
+            group_meta$sample_type, sep = "_")
+    
+    row.names(group_otus) <- new_names
+    
+    ## Row clustering
+    
+    # generate bray distance matrix, cluster, sort
+    message(paste0("generating distance matrix for ", group))
+    
+    ## make dendrogram, cut into separate clusters if applicable
+    dist_rows <- vegdist( group_otus, method = "bray")
+    clust_rows <- hclust( dist_rows, method = "average")
+    
+    clust_rows <- as.hclust(dendsort(as.dendrogram(clust_rows)))
+    
+    # dynamic tree cuts assign clusters based on dendrogram and parameters. Maybe include?
+    # cut_clust_rows <- cutreeDynamic(clust_rows,
+    #                                 distM =  as.matrix(dist_rows),
+    #                                 0.97, minClusterSize = 25)
+    
+        
+
+    # generate annotation information
+    annotation_row = data.frame(
+                                #sample_cluster = cut_clust_rows,
+                                empo_1 = group_meta$empo_1,
+                                empo_2 = group_meta$empo_2,
+                                empo_3 = group_meta$empo_3)
+    annotation_row <- droplevels(annotation_row)
+    row.names(annotation_row) = new_names
+    
+    # assign colors
+    
+    ## define a function for grabbing rcolors
+    get_colors <- function(table, column, pal){
+      color_pal <- viridis(length(unique((table[[column]]))), option = pal)
+      names(color_pal) <- levels(table[[column]])
+      return(color_pal)
+    }
+    
+    row_clust_cols <- get_colors(annotation_row, "sample_cluster", "C")
+    
+    ## Column Clustering
+    
+     ## make dendrogram, cut into separate clusters if applicable
+    dist_cols <- vegdist( t(group_otus), method = "bray")
+    clust_cols <- hclust( dist_cols, method = "average")
+    
+    # sort dendrogram
+    clust_cols <- as.hclust(dendsort(as.dendrogram(clust_cols)))
+    
+    # identify cluster using same dendrogram based approach as above
+    # cut_clust_cols <- cutreeDynamic(clust_cols,
+    #                                 distM =  as.matrix(dist_cols),
+    #                                 cutHeight = 0.99,
+    #                                 minClusterSize = 70)
+    
+    annotation_col = data.frame(ASV_cluster = cut_clust_cols,
+                                phylum = group_tax$phylum)
+    
+    annotation_col <- droplevels(annotation_col)
+    row.names(annotation_col) <- row.names(group_tax)
+    
+    col_clust_cols <- get_colors(annotation_col, "ASV_cluster", "D")
+
+  
+    message("plotting")
+    # generate heatmap
+    png(file  = paste0("outputs/heatmap/",description, group, "_sample_heatmap.png"),
+        width = 20,
+        height = 30, res = 300, units = "in")
+    if(isTRUE(zscale)){
+      
+      pheatmap(
+        group_otus,
+        #clustering_distance_rows = drows,
+        annotation_row = annotation_row,
+        annotation_col = annotation_col,
+        show_colnames = F,
+        annotation_names_row = T,
+        treeheight_row = 100,
+        treeheight_col = 100,
+        fontsize_row = 4,
+        scale = "column",
+        cluster_rows = clust_rows,
+        cluster_cols = clust_cols,
+        color = viridis(n = 50, option = "E"),
+        annotation_colors = list(sample_cluster = row_clust_cols,
+                                 ASV_cluster = col_clust_cols)
+      )
+    } else{
+       pheatmap(
+        group_otus,
+        #clustering_distance_rows = drows,
+        annotation_col = annotation_col,
+        annotation_row = annotation_row,
+        show_colnames = F,
+        annotation_names_row = T,
+        treeheight_row = 100,
+        treeheight_col = 100,
+        fontsize_row = 4,
+        # scale = "column", NO SCALING
+        cluster_rows = clust_rows,
+        cluster_cols = clust_cols,
+        clustering_method = "average",
+        color = viridis(n = 50, option = "E"),
+        annotation_colors = list(sample_cluster = row_clust_cols,
+                                 ASV_cluster = col_clust_cols)
+       )
+    }
+    
+    dev.off()
+    
+  }
+
+
+```
+
+
+## make heatmaps for each habitat
+For each habitat type, make a big habitat to detect clusters of sample types and identify sample types that do not cluster.
+Heatmaps are annotated by site, novel grouping, and original sample_type. Files written out as .tiff to outputs/heatmap/
+
+```{r}
+
+lapply(habitat_list, subset_and_heatmap, metadata_column = "habitat")
+
+
+```
+
+Make heatmaps with presence absence instead of the transformed data
+
+```{r}
+
+pa_otus <- decostand(all_otus, "pa")
+lapply(habitat_list, subset_and_heatmap, metadata_column = "habitat", otus = pa_otus, zscale = F, description = "PresAbs")
+```
+
+
+# Let's try ComplexHeatmap, so we can add topic bargraphs
+
+```{r}
+complex_heatmap <-
+  function(group,
+           metadata_column,
+           otus = all_otus,
+           meta = all_meta,
+           tax = all_tax,
+           zscale = T,
+           description = NULL)   {
+    # group = "Marine"
+    # metadata_column = "habitat"
+    #     otus = all_otus
+    #        meta = all_meta
+    #        tax = all_tax
+    #        zscale = T
+    #        description = NULL
+    # filter metadata where selected metadata column matches the group
+    group_meta <- all_meta[all_meta[[metadata_column]] %in% group,]
+    
+    # subset otus to match metadata
+    group_otus <-
+      otus[match(group_meta$sequencing_id, row.names(otus)),]
+    group_otus <-
+      group_otus[rowSums(group_otus) > 0, colSums(group_otus) > 0]
+    
+    # subset taxonomy to match otus
+    group_tax <- tax[match(colnames(group_otus), tax$asv_name),]
+    
+    # update row names to include sample types
+    new_names <-
+      paste(group_meta$sequencing_id,
+            group_meta$sample_type, sep = "_")
+    
+    row.names(group_otus) <- new_names
+    
+    
+    # pull out topic assignments for the group data
+    group_sam_topics <- as.matrix(group_meta[ grepl("topic",
+                                                   colnames(group_meta) )] )
+    
+    group_asv_topics <- as.matrix(group_tax[ grepl("topic",
+                                                  colnames(group_tax) ) ] )
+    group_asv_topics[is.na(group_asv_topics)] <- 0
+    
+    # construct heatmap annotation
+    
+    ## EMP ontology categorical annotation and ASV topics barplot
+    ha_row <- rowAnnotation(
+      EMPO_3 = group_meta$empo_3,
+      EMPO_2 = group_meta$empo_2,
+      EMPO_1 = group_meta$empo_1,
+      Sample_topics = anno_barplot(
+        group_sam_topics,
+        gp = gpar(
+          fill = viridis(n = ncol(group_sam_topics)),
+          col = viridis(n = ncol(group_sam_topics)),
+          option = "A"
+        ),
+        border = F,
+        bar_width = 1,
+        width = unit(1, "in")
+      )
+    )
+
+    ## Stacked barplots for ASV topics
+    ha_col <- HeatmapAnnotation(
+      ASV_topics = anno_barplot(
+        group_asv_topics,
+        gp = gpar(
+          fill = viridis(n = ncol(group_asv_topics),
+                         option = "A"),
+          col = viridis(n = ncol(group_asv_topics),
+                        option = "A")
+        ),
+        border = F,
+        bar_width = 1,
+        height = unit(1, "in")
+      ),
+      which = "col"
+    )
+    
+    
+    # create custom dendrogram with bray distance and sort it to better show close relationships
+    row_dist <- vegdist(group_otus, method = "bray")
+    row_clust <- hclust(row_dist , method = "average")
+    row_dendro <- dendsort(as.dendrogram(row_clust))
+    
+    # scale ASV abundance for plot visualization
+    group_otus_z <- scale(group_otus)
+    
+    # contruct heatmap
+    ht <- Heatmap(
+      group_otus_z,
+      col = viridis(n = 20),
+      border = T,
+      
+      column_dend_height = unit(1, "in"),
+      row_dend_width = unit(1, "in"),
+      
+      cluster_rows = row_dendro,
+      show_column_names =  F,
+      
+      top_annotation =  ha_col,
+      left_annotation = ha_row,
+      
+      row_names_gp = gpar(fontsize = 8)
+    )
+    
+    # return heatmap object
+    return(ht)
+    
+  }
+
+
+```
+
+Okay! Time to run these even more complicated heatmaps on all the habitats
+
+```{r}
+terr_ht <- complex_heatmap("Terrestrial", metadata_column = "habitat")
+
+hab_hts <- lapply(habitat_list, complex_heatmap, metadata_column = "habitat")
+
+for( i in seq_along(habitat_list) ){
+    #plot as PNG file
+    png(
+      paste0(
+        "outputs/heatmap/",
+        habitat_list[i],
+        "_topics_heatmap.png"
+      ),
+      width = 40,
+      height = 25,
+      res = 300,
+      units = "in"
+    )
+  
+  print(hab_hts[i])
+  
+  dev.off()
+  
+}
+
+```
+
+## LDA plus heatmap for all samples!
+
+Anthony requests a large heatmap of all samples from all habitats.
+We're also going to drop ASVs that have low topic probability and arrange them by topic probability.
+
+How are we going to arrange by topic probability? I guess by running hclust on the ASV topics data.
+
+```{r}
+
+# check distriubtion of topic probabilities
+hist(rowSums(asv_topics[,-1]),
+     xlim = c(0, 0.005),
+     breaks = 3000)
+
+# pull out higher probability ASVs
+h_asv_topics <- asv_topics[ rowSums(asv_topics[,-1]) > 0.003 , ]
+h_asv_topics_mat <- as.matrix(h_asv_topics[ , -1])
+row.names(h_asv_topics_mat) <-  h_asv_topics$asv_name
+
+
+# match otus, taxonomy, meta, topics
+h_otus <- all_otus[ , match(h_asv_topics$asv_name, colnames(all_otus))]
+
+h_tax  <- all_tax[ match(h_asv_topics$asv_name, all_tax$asv_name) , ]
+
+h_meta <- all_meta[ match(row.names(all_otus), all_meta$sequencing_id) ,]
+
+h_sam_topics <- as.matrix(h_meta[, grep("topic", names(h_meta))])
+row.names(sam_topics) <- h_meta$sequencing_id
+
+# make more informative row names for the heatmap
+new_names <-
+  paste(h_meta$sequencing_id,
+        h_meta$sample_type, sep = "_")
+row.names(h_otus) <- new_names
+
+# generate clustered dendrogarms for the heatmap
+# for samples, use ecologically infomrative bray distance and sort it to better show relationships
+row_dist <- vegdist(h_otus, method = "bray")
+row_clust <- hclust(row_dist , method = "average")
+row_dendro <- dendsort(as.dendrogram(row_clust))
+
+# alternate clustering based on topics
+row_clust2 <- hclust(dist(h_sam_topics, method = "euclidean"), method = "average")
+row_dendro2 <- dendsort(as.dendrogram(row_clust2))
+
+# for ASVs, use hierarchical clustering on the topic probabilities
+col_clust <- hclust(dist(h_asv_topics_mat, method = "euclidean"), method = "average")
+col_dendro <- dendsort(as.dendrogram(col_clust), isReverse = T)
+
+# scale ASV abundance for plot visualization
+h_otus_z <- scale(h_otus)
+
+# map_viri generates colors for a vector
+map_viri <-function(data_vec, pal = "E"){
+  viri_cols <- viridis(n = length(unique(data_vec)), option = pal)
+  names(viri_cols) <- unique(data_vec)
+  return(viri_cols)
+}
+# generate annotations
+ ⎄
 ```
 

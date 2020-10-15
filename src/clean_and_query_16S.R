@@ -2,6 +2,72 @@
 
 # read and clean 16S ------------------------------------------------------
 # setwd("~/Desktop/R/CMAIKI_clean_and_query/bacterial_16S/")
+
+
+# define cull.otu function
+
+cull.otu = function(abund.dt, min.num = 0, min.abund = 0, min.single.abund = 0, sample_column = "Group") {
+  # This function locates ASV columns that fail to meet relative abundance requirements and drops them from the data.table
+  # Creates a single vector of columns to drop and then drops them, which is instantaneous and requires no memory usage.
+  
+  #Inputs:  relabund.df = dataframe containing ONLY relative abundance data, no metadata or other info. Samples in rows and OTUs in columns.
+  
+  #min.num = the minimum number of samples an OTU needs to be present in to not be culled.
+  
+  #min.abund = the minimum relative abundance an OTU needs to have in (the min.num) samples to not be culled.
+  
+  # determine which columns to keep 
+  # TEST
+  # abund.dt = abund[,1:5]
+  # min.num = 3
+  # min.abund = 50000
+  # min.single.abund = 100000
+  
+  # check mean read abundance per sample pre-culling
+  
+  
+  # pull out sample names
+  group_names <- abund.dt[[sample_column]]
+  
+  # identify columns containing OTU abundance counts
+  otu_cols <- colnames(abund.dt)[colnames(abund.dt) != sample_column]
+  
+  # copy abundance counts to a new data.table and convert to class numeric
+  message("copying table")
+  tm <- proc.time()
+  abund.ra <- copy(abund.dt)
+  
+  proc.time() - tm
+  
+  # add a column with total abundance for each sample
+  message("calculating rowsums")
+  abund.ra[ , total_abund := rowSums(abund.ra[ , ..otu_cols])]
+  
+  
+  # convert abundance to relative abundance
+  message("converting to relative abundance")
+  
+  tm <- proc.time()
+  
+  abund.ra[ , (otu_cols) := lapply(.SD, function(x) x / total_abund), by = sample_column, .SDcols = otu_cols]
+  
+  proc.time() - tm
+  
+  # drop non-OTU columns (i.e. sample name and total sample abundance)
+  abund.ra[ , c(sample_column, "total_abund"):= NULL]
+  
+  # identify OTU columns that fail to meet minimum requirements
+  message("dropping culled OTUs")
+  drop_cols <- which(
+    sapply(abund.ra, function(otu)
+      length(otu[otu >= min.abund]) < min.num   ||   length(otu[otu > min.single.abund]) == 0 
+    )
+  )
+  # drop OTU columns that fail to meet minimum requirements from the original abundance table
+  abund.dt[ , (names(drop_cols)):=NULL]
+  
+}
+
 # clean 16S pipeline outputs for R analyses
 
 clean_16S_tables <- function(abundance_file = NULL,
@@ -18,14 +84,6 @@ clean_16S_tables <- function(abundance_file = NULL,
   require(data.table)
   
   ########## START
-  
-  #### *** Test Case COMMENT OUT UNLESS TESTING ***
-
-  
-  #### ** TEST END ***
-   
-   
-   
    
   # check input files
   if(!file.exists(abundance_file)){
@@ -41,7 +99,7 @@ clean_16S_tables <- function(abundance_file = NULL,
   
   ## Read in tables
   message("reading abundance")
-  abund <- fread( abundance_file, header = T, sep = "\t")
+  abund <- fread( abundance_file, drop =  c("numOtus","label"), colClasses = "numeric", header = T, sep = "\t")
   
   message("reading taxonomy")
   tax   <- fread( taxonomy_file, header = T, sep = "\t")
@@ -58,8 +116,10 @@ clean_16S_tables <- function(abundance_file = NULL,
                       sep = ";")
   
   # Clean abundance table: Cut down id name and delete numOtus
-  abund$Group <- sub(".*(1\\d{5}).*","\\1", abund$Group, perl = T)
-    abund[, c("numOtus","label"):=NULL]
+  abund$Group <- sub( ".*(1\\d{5}).*",
+                      "\\1",
+                      abund$Group,
+                      perl = T)
   
   
   # Check abundance and taxonomy have the same OTUs
@@ -72,55 +132,37 @@ clean_16S_tables <- function(abundance_file = NULL,
     }         
   
   ## Culling abundance file to manageable size
-
-    # define cull.otu function
   
-    cull.otu = function(abund.dt, min.num = 0, min.abund = 0, min.single.abund = 0) {
-    # This function locates columns matching criteria and drops them from the data.table
-    # Creates a single vector of columns to drop and then drops them, which is instantaneous and requires no memory usage.
-      
-    #Inputs:  relabund.df = dataframe containing ONLY relative abundance data, no metadata or other info. Samples in rows and OTUs in columns.
-    
-    #min.num = the minimum number of samples an OTU needs to be present in to not be culled.
-    
-    #min.abund = the minimum relative abundance an OTU needs to have in (the min.num) samples to not be culled.
-
-      # determine which columns to keep 
-      # TEST
-       # abund.dt = abund[,1:5]
-       # min.num = 3
-       # min.abund = 50000
-       # min.single.abund = 100000
-
-      group_names <- abund.dt$Group
-      abund.dt[, Group:=NULL]
-      drop_cols <- which(
-                        sapply(abund.dt, function(otu)
-                                     length(otu[otu >= min.abund]) < min.num   ||   length(otu[otu > min.single.abund]) == 0 
-                                )
-                         )
-      # subset to keep_cols
-      abund.dt[ , (drop_cols):=NULL]
-      abund.dt[ , Group:=group_names]
-    }
-    
-
   #If cull is a list, cut down the abundance, and taxonomy files based on listed values
    if(is.list(cull) & !all(lapply(cull,is.null))){
-     message("Culling OTUS from data")
+     message("Culling OTUS from data, raw table written out as csv")
      message( paste("min number of samples for OTU to be present in = ", cull$min.num,
-                    "min abundance of OTU to count as being present = ", cull$min.abund,
-                    "minimum single abundance in a sample =", cull$min.single.abund,
+                    "min relative abundance of OTU to count as being present = ", cull$min.abund,
+                    "minimum relative abundance in a single sample =", cull$min.single.abund,
                     sep = "\n"))
      
+     message("\n writing out raw, unculled table")
+     fwrite(abund,file = paste0(output_dir,"/","raw_",description, "abundance_table.csv"))
      message(paste("Starting # OTUS =", ncol(abund)-1))
+     message
+   #  message(paste("Starting mean read count per sample =",
+    #               round( mean( rowSums( abund[ , .SD, .SDcols = !"Group"] )))))
      
     # run cull otus function 
-    cull.otu(abund.dt = abund, min.num = cull$min_num, min.abund = cull$min.abund, min.single.abund = cull$min.single.abund)
+    suppressWarnings(
+      cull.otu(abund.dt = abund,
+             min.num = cull$min_num,
+             min.abund = cull$min.abund,
+             min.single.abund = cull$min.single.abund))
+    
+    # update taxonomy to match culled abundance table 
     tax   <- tax[OTU %in% colnames(abund)]
     
     
     message(paste("New # OTUS =", ncol(abund) -1))
+    message(paste("New mean read count per sample =",
+                  round( mean( rowSums( abund[ , .SD, .SDcols = !"Group"] )))))
+
     
    } 
     else{
@@ -128,8 +170,8 @@ clean_16S_tables <- function(abundance_file = NULL,
   }
 
   
-  # Clean metadata table: Subset to include only samples that appear in the abundance table
-  meta        <- fullmeta[fullmeta[[id_column]] %in% abund$Group]
+  # update the metadata table to match culled abundance table
+  meta        <- fullmeta[ fullmeta[[id_column]] %in% abund$Group ]
   
   
   not_in_abund <-  fullmeta[!(fullmeta[[id_column]] %in% abund$Group)]
@@ -148,16 +190,13 @@ clean_16S_tables <- function(abundance_file = NULL,
   # Write out all tables as .csv and return a "result" list of tables
   lapply(1:length(result),
          function(x) fwrite(result[[x]],
-                               file = paste(output_dir,"/",description, "_", names(result[x]),"_", "table.csv", sep = "")))
+                               file = paste0(output_dir,"/",description, "_", names(result[x]),"_", "table.csv")))
   # write message
   message(paste("tables written out as csv files starting with ", description, "...", sep = ""))
   return(result)
   ########## END
 
-  
-  
   }
-
 
 
 # summarize 16S sequencing success --------------------------------------------------

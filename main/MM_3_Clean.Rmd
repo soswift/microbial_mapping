@@ -88,7 +88,7 @@ mm_16s <- clean_16S_tables(
                   description = "mm_16s_hiseqs",
                   output_dir = "../data/processed/cleaned",
                   id_column = "sequencing_id",
-                  cull = list(min.num = 4, min.abund = 500, min.single.abund = 1000)
+                  cull = list(min.num = 3, min.abund = 0.001, min.single.abund = 0.01)
                   )
 
                 
@@ -115,13 +115,12 @@ source("../src/clean_and_query_ITS.R")
 ## the function writes out each cleaned file as a csv
 
 mm_its <- clean_ITS_tables(
-                   abundance_file = abund_its_file,
+                  abundance_file = abund_its_file,
                   taxonomy_file = tax_its_file,
                   metadata_file = meta_its_file,
                   description = "mm_its_hiseqs",
                   output_dir = "../data/processed/cleaned",
-                  id_column = "sequencing_id",
-                  cull = list(min.num = 4, min.abund = 500, min.single.abund = 1000)
+                  id_column = "sequencing_id"
 )
 
 
@@ -131,6 +130,10 @@ mm_its <- clean_ITS_tables(
 The function takes the csv files written out above. Each file is read in, re-organized for phyloseq object, and finally a phyloseq object is created.
 
 ### 16S Phyloseq
+Make a phyloseq object for downstream analysis and filtering.
+Do some basic filtering based on OTU taxa and sample data.
+
+Peform subsampling and relative abundance transformation
 
 ```{r}
 # make phyloseq
@@ -139,7 +142,7 @@ source("../src/make_phyloseq.R")
 MM_16S_phy <- make_phyloseq(abund_file  = "../data/processed/cleaned/mm_16s_hiseqs_abundance_table.csv",
                             tax_file    = "../data/processed/cleaned/mm_16s_hiseqs_taxonomy_table.csv",
                             meta_file   = "../data/processed/cleaned/mm_16s_hiseqs_metadata_table.csv",
-                            id_column = "sequencing_id")
+                            id_column   = "sequencing_id")
 
 ntaxa(MM_16S_phy)
 
@@ -149,27 +152,89 @@ MM_16S_phy <- subset_taxa(MM_16S_phy, (order!="Chloroplast") &
                                          (kingdom != "Archaea") &
                                          (family != "Mitochondria") &
                                          (kingdom != "Unknown"))
-ntaxa(MM_16S_phy)
-
-nsamples(MM_16S_phy)
-
-
 # filter out empty samples
 MM_16S_phy <- prune_samples(sample_sums(MM_16S_phy) != 0, MM_16S_phy)
-
-nsamples(MM_16S_phy)
 
 # filter by project
 MM_16S_phy <- subset_samples( MM_16S_phy, project_name %in% c("Keck","JoshMS"))
 
+hist(sample_sums(MM_16S_phy)[sample_sums(MM_16S_phy) <50000], breaks = 30)
+
+
+# subsample to even depth
+MM_16S_phy <- rarefy_even_depth(MM_16S_phy,
+                                    rngseed = 1,
+                                    sample.size = 10000,
+                                    replace = F)
+# write out counts 
+saveRDS(MM_16S_phy, "../data/processed/cleaned/MM_16S_phy_counts.rds")
+
+# relativize abundance data
+MM_16S_phy <-  transform_sample_counts(MM_16S_phy, function(x) x / sum(x))
 
 # write out phyloseq
 saveRDS(MM_16S_phy, "../data/processed/cleaned/MM_16S_phy.rds")
 
+
+
+write.csv(sample_data(MM_16S_phy), "../data/processed/cleaned/rel_abund_MM_16S_sample_data.csv")
+
+write.csv(otu_table(MM_16S_phy), "../data/processed/cleaned/rel_abund_MM_16S_otu_table.csv")
+
+write.csv(tax_table(MM_16S_phy), "../data/processed/cleaned/rel_abund_MM16S_taxonomy.csv")
+
 # remove phyloseq object
 rm(MM_16S_phy)
 
+```
+### EMPO Data Exports for Nestedness Analysis
+Read in raw data set, export separate subsets based on EMP ontology.
+These tables will be used to run separate nestedness analyses for each group in the EMP ontology.
+```{r}
+# Read in raw otu table, drop unnecessary columns and transpose into long format
+all_otus <- fread("../data/raw/sequence/waimea_16S_v1/abundance_table_100.shared", drop = c("label","numOtus"))
+all_otus <- transpose(all_otus, keep.names = "OTU_ID", make.names = "Group")
+
+sample_dat <- fread("../data/processed/cleaned/mm_16s_hiseqs_metadata_table.csv")
+
+# subset to relevant samples
+sample_dat <- sample_dat[project_name %in% c("Keck", "JoshMS")]
+sample_dat[trophic == "too broad", trophic := "Carnivore"]
+
+# sub_sum() subsets otu table by group in
+sub_otu_table <- function(a_group, otu_table, sample_dat, group_column, key_column){
+              group_samples <- sample_dat[sample_dat[[group_column]] == a_group][[key_column]]
+              group_samples <- as.character( c("OTU_ID", group_samples))
+              otu_table  <- otu_table[ , ..group_samples]
+              
+              return(otu_table)
+}
+
+# for each level of each EMPO category and trophic, write out a subset table
+
+for(empo_level in c("empo_1","empo_2","empo_3", "trophic")){
+  
+  for(empo_value in unique(sample_dat[[empo_level]])){
+    otu_subset <- sub_otu_table(a_group = empo_value,
+                    otu_table = all_otus,
+                    sample_dat = sample_dat,
+                    group_column = empo_level,
+                    key_column = "sequencing_id")
+    otu_subset <- otu_subset[rowSums(otu_subset[, .SD, .SDcols = !"OTU_ID"])>0]
+    fwrite(otu_subset, file = paste0("../data/processed/EMPO_subsets/",empo_level,"_",empo_value,".csv"))
+  }
+  
+}
+
+
+
 
 ```
-### ITS Phyloseq
+### Data Exports For Marine Fungi
+
+Export just marine fungal data for Syrena
+
+```{r}
+
+```
 

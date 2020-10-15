@@ -22,6 +22,7 @@ clean_abund <- function(abund){
   otus_ids <- colnames(abund)
   
   abund <- transpose(abund)
+  abund <- as(abund, "matrix")
   
   # add sample ids as column names
   colnames(abund) <- sample_ids
@@ -41,9 +42,10 @@ clean_tax <- function(tax){
   
   message("cleaning taxonomy")
   
-  row.names(tax) <- tax$OTU
+  OTU_names <- tax$OTU
   tax <- tax[ , (1:2) := NULL ]
   tax <- as.matrix(tax)
+  row.names(tax) <- OTU_names
   TAX     <- tax_table(tax)
   return(TAX)
 }
