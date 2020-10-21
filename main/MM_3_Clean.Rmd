@@ -187,44 +187,7 @@ write.csv(tax_table(MM_16S_phy), "../data/processed/cleaned/rel_abund_MM16S_taxo
 rm(MM_16S_phy)
 
 ```
-### EMPO Data Exports for Nestedness Analysis
-Read in raw data set, export separate subsets based on EMP ontology.
-These tables will be used to run separate nestedness analyses for each group in the EMP ontology.
-```{r}
-# Read in raw otu table, drop unnecessary columns and transpose into long format
-all_otus <- fread("../data/raw/sequence/waimea_16S_v1/abundance_table_100.shared", drop = c("label","numOtus"))
-all_otus <- transpose(all_otus, keep.names = "OTU_ID", make.names = "Group")
 
-sample_dat <- fread("../data/processed/cleaned/mm_16s_hiseqs_metadata_table.csv")
-
-# subset to relevant samples
-sample_dat <- sample_dat[project_name %in% c("Keck", "JoshMS")]
-sample_dat[trophic == "too broad", trophic := "Carnivore"]
-
-# sub_sum() subsets otu table by group in
-sub_otu_table <- function(a_group, otu_table, sample_dat, group_column, key_column){
-              group_samples <- sample_dat[sample_dat[[group_column]] == a_group][[key_column]]
-              group_samples <- as.character( c("OTU_ID", group_samples))
-              otu_table  <- otu_table[ , ..group_samples]
-              
-              return(otu_table)
-}
-
-# for each level of each EMPO category and trophic, write out a subset table
-
-for(empo_level in c("empo_1","empo_2","empo_3", "trophic")){
-  
-  for(empo_value in unique(sample_dat[[empo_level]])){
-    otu_subset <- sub_otu_table(a_group = empo_value,
-                    otu_table = all_otus,
-                    sample_dat = sample_dat,
-                    group_column = empo_level,
-                    key_column = "sequencing_id")
-    otu_subset <- otu_subset[rowSums(otu_subset[, .SD, .SDcols = !"OTU_ID"])>0]
-    fwrite(otu_subset, file = paste0("../data/processed/EMPO_subsets/",empo_level,"_",empo_value,".csv"))
-  }
-  
-}
 
 
 

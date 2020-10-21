@@ -35,9 +35,12 @@ theme_set(theme_bw())
 
 # get color palettes 
 
-trophic_colors <- get_waimea_colors(return_all = T, cat_type = "trophic")
-habitat_colors <- get_waimea_colors(return_all = T, cat_type = "habitat")
-emp_colors     <- get_waimea_colors(return_all = T, cat_type = "emp") 
+trophic_colors <- get_waimea_colors(return_all = T,
+                                    cat_type = "trophic")
+habitat_colors <- get_waimea_colors(return_all = T,
+                                    cat_type = "habitat")
+emp_colors     <- get_waimea_colors(return_all = T,
+                                    cat_type = "emp") 
 
 # set log transformed color palette for gradient values (e.g. elevation)
 pal_c = "plasma"
@@ -81,7 +84,7 @@ metadata <- as(sample_data(MM_16S_phy), "data.frame")
 
 all_dist <- distance(MM_16S_phy, method="bray")
 
-
+# run permanovas using type 2 sum of squares
 perm_aovs <- list()
 
 perm_aovs$empo_3  <- adonis.II(all_dist ~ empo_3)
@@ -90,15 +93,30 @@ perm_aovs$site_code <- adonis.II(all_dist ~ site_code)
 
 permanova_output <- adonis.II(all_dist ~  empo_3+site_code+habitat+empo_3:site_code+empo_3:habitat+habitat:site_code,
                           data = metadata,
-                          parallel = 2, permutations = 99
+                          parallel = 2,
+                          permutations = 99
                           
                           )
+# write out
+saveRDS(permanova_output,
+        "../data/processed/interim/permanova_output.rds")
 
+write.csv(permanova_output,
+          "outputs/permanova/emp_site_habitat_permanova_table.csv")
 
+# calculate betadispersion for the three factors being considered
+# this helps us intepret permanova results as composition or dispersion based
+beta_disps <- list()
 
-saveRDS(permanova_output, "../data/processed/interim/permanova_output.rds")
+for(a_factor in c("empo_3","site_code","habitat")){
 
-write.csv(permanova_output, "outputs/permanova/emp_site_habitat_permanova_table.csv")
+factor_groups <- metadata[match(labels(all_dist),
+                                  sam_dat$sequencing_id), 
+                            a_factor]
+
+beta_disps[a_factor] <- betadisper(all_dist, factor_groups)
+
+}
  
 
 ```
@@ -138,9 +156,11 @@ p <-
 p <- ggplot(p$data, p$mapping) +
         scale_shape_discrete(solid = T) +
         # adjust point transparency and size
-        geom_point( size = 2, alpha = 0.7)+ 
+        geom_point( size = 2,
+                    alpha = 0.7)+ 
         # use standardized habitat colors
-        scale_color_manual(values = habitat_colors, drop = F) +
+        scale_color_manual(values = habitat_colors,
+                           drop = F) +
         ggtitle("All Samples, Bray Curtis Distance, NMDS - By Habitat") 
 p
 
