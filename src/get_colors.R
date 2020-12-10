@@ -44,22 +44,19 @@ get_waimea_colors <- function(cat_name = NULL, return_all = FALSE, cat_type = c(
   
   # discrete colors for three habitat types
   
-  habitat_colors <- c("Riverine" = "#9900CC", # purple
-                      "Marine"   = "#0000CC", # blue
-                      "Terrestrial" = "#339900", # green
-                      "Other" = "#929591" # gray for null value
+  habitat_colors <- c("Riverine" = "#a6cee3", # purple
+                      "Marine"   = "#1f78b4", # blue
+                      "Terrestrial" = "#fed9a6", # green
+                      "Other" = "black" # gray for null value
                       )
   # discrete colors for trophic levels
   # consumers follow a color ramp from yellow to red
   
-  trophic_colors <- c("Environmental" = "#009999",
-                      "PrimaryProducer" = "#33a02c",
+  trophic_colors <- c("Environmental" = "#fc8d62",
+                      "PrimaryProducer" =  "#66c2a5",
                       # consumers
-                      "Omnivore" = "#ffff00",
-                      "Detritivore" = "#ff9900",
-                      "Herbivore" = "#ff6600",
-                      "Carnivore" = "#ff0033",
-                      "Other"= "#929591" # gray for null value
+                      "Consumer" = "#beaed4",
+                      "Other"= "black" # gray for null value
                       )
   
   # store all colors in a list

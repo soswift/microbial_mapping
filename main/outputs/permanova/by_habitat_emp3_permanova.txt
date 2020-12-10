@@ -1,0 +1,39 @@
+[1] "Marine"
+Permutation: free
+Number of permutations: 999
+
+Type II tests
+Response: distance(MM_sub, method = "bray")
+           Sum Sq Mean Sq  Df      F Pr(>F)    
+empo_3     25.686  6.4215   4 18.187  0.001 ***
+Residuals 141.234  0.3531 400                  
+Total     166.920         404                  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+[1] "R2 = 0.15388144525294"
+[1] "Riverine"
+Permutation: free
+Number of permutations: 999
+
+Type II tests
+Response: distance(MM_sub, method = "bray")
+           Sum Sq Mean Sq  Df      F Pr(>F)    
+empo_3     18.549  4.6372   4 12.301  0.001 ***
+Residuals  93.866  0.3770 249                  
+Total     112.415         253                  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+[1] "R2 = 0.165003163817016"
+[1] "Terrestrial"
+Permutation: free
+Number of permutations: 999
+
+Type II tests
+Response: distance(MM_sub, method = "bray")
+          Sum Sq Mean Sq  Df      F Pr(>F)    
+empo_3     53.49  5.9438   9 14.854  0.001 ***
+Residuals 296.52  0.4002 741                  
+Total     350.01         750                  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+[1] "R2 = 0.152836752142289"

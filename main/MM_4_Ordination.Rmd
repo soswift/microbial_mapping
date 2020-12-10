@@ -53,12 +53,13 @@ uniform_gradient_color <- function(palname = pal_c, ...){
 
 ```
 
-
+  
 ## Read in phyloseq object
 ```{r}
 MM_16S_phy <- readRDS("../data/processed/cleaned/MM_16S_phy.rds")
 
 MM_16S_phy
+
 
 meta <- as(as(sample_data(MM_16S_phy), "data.frame"), "data.table")
 
@@ -87,22 +88,25 @@ all_dist <- distance(MM_16S_phy, method="bray")
 # run permanovas using type 2 sum of squares
 perm_aovs <- list()
 
-perm_aovs$empo_3  <- adonis.II(all_dist ~ empo_3)
-perm_aovs$habitat <- adonis.II(all_dist ~ habitat)
-perm_aovs$site_code <- adonis.II(all_dist ~ site_code)
+perm_aovs$empo_3  <- adonis.II(all_dist ~ empo_3, data = metadata)
+perm_aovs$habitat <- adonis.II(all_dist ~ habitat, data = metadata)
+perm_aovs$site_code <- adonis.II(all_dist ~ site_code, data = metadata)
 
 permanova_output <- adonis.II(all_dist ~  empo_3+site_code+habitat+empo_3:site_code+empo_3:habitat+habitat:site_code,
                           data = metadata,
                           parallel = 2,
-                          permutations = 99
-                          
+                          permutations = 1000
                           )
+# calculate R-squared values
+permanova_output <- data.frame(permanova_output)
+permanova_output$R2  <- permanova_output$Sum.Sq/permanova_output$Sum.Sq[nrow(permanova_output)]
+
 # write out
 saveRDS(permanova_output,
         "../data/processed/interim/permanova_output.rds")
 
 write.csv(permanova_output,
-          "outputs/permanova/emp_site_habitat_permanova_table.csv")
+           "outputs/permanova/all_emp3_site_habitat_permanova_table.csv")
 
 # calculate betadispersion for the three factors being considered
 # this helps us intepret permanova results as composition or dispersion based
@@ -111,13 +115,16 @@ beta_disps <- list()
 for(a_factor in c("empo_3","site_code","habitat")){
 
 factor_groups <- metadata[match(labels(all_dist),
-                                  sam_dat$sequencing_id), 
+                                  metadata$sequencing_id), 
                             a_factor]
 
-beta_disps[a_factor] <- betadisper(all_dist, factor_groups)
+beta_disps[[a_factor]] <- betadisper(all_dist, factor_groups)
 
 }
- 
+
+capture.output(print(beta_disps), file = "outputs/permanova/emp3_betadisp_table.txt")
+
+
 
 ```
 
@@ -128,13 +135,18 @@ run nmds on all samples, except controls
 ### Ordinate
 
 ```{r}
+
 # subset to remove controls (no metadata in the host column)
 nsamples(MM_16S_phy)
 
 MM_16S_phy <- subset_samples(MM_16S_phy, host != "")
 
+# simplify trophic levels to Environmental, PrimaryProducer, and Consumer
+sample_data(MM_16S_phy)$trophic[!(sample_data(MM_16S_phy)$trophic %in%
+                                    c("Environmental", "PrimaryProducer"))] <- "Consumer"
 
-# ordinate all phyloseq object
+# ordinate all phyloseq object  
+set.seed(2020)
 
 MM.ord <- ordinate(physeq = MM_16S_phy,
                    method =  "NMDS",
@@ -153,7 +165,7 @@ p <-
                   color = "habitat",
                   shape = "empo_2")
 
-p <- ggplot(p$data, p$mapping) +
+p <- ggplot(data = p$data, mapping = p$mapping) +
         scale_shape_discrete(solid = T) +
         # adjust point transparency and size
         geom_point( size = 2,
@@ -249,12 +261,20 @@ ordinate_habitat <- function(x){
   MM.ord <- ordinate(MM_sub, "NMDS", "bray")
   
   #plot
-  p <- plot_ordination(MM_sub, MM.ord, type="samples", color = "trophic", shape = "empo_2", title= paste("NMDS, Bray,", hab))
+  p <- plot_ordination(MM_sub, MM.ord,
+                       type="samples",
+                       color = "trophic",
+                       shape = "empo_2",
+                       title= paste("NMDS, Bray,", hab))
   p <- p +
     scale_shape_discrete(solid = T)+
     scale_color_manual(values = trophic_colors)+
     coord_fixed(ratio = 1)
-  return(p)
+  
+  # calculate permanova
+  adonis_out <- adonis.II(distance(MM_sub, method = "bray") ~ empo_3 ,data = as(sample_data(MM_sub), "data.frame"))
+  write.csv(adonis_out, file = paste0("outputs/permanova/permanova_",hab,"_summary.csv"))
+  return(list(p, adonis_out))
 }
 
 # run function
@@ -268,17 +288,31 @@ names(habitat_plots) <- habitat_types
 
 for(i in names(habitat_plots)){
   ggsave(filename = file.path(out_dir, paste0("habitat_", i,"_nmds.pdf", sep = "")),
-         plot = habitat_plots[[i]])
+         plot = habitat_plots[[i]][[1]])
 }
 
 # facet habitat plots into single figure
-habitat_facet <- ggarrange(habitat_plots[[1]], habitat_plots[[2]], habitat_plots[[3]], ncol = 3, nrow = 1)
+habitat_facet <- ggarrange(habitat_plots[[1]][1], habitat_plots[[2]][1], habitat_plots[[3]][1], ncol = 3, nrow = 1)
 
 habitat_facet
 
 ggsave(filename = file.path(out_dir, "habitat_facet_nmds.pdf"), 
        plot = habitat_facet,
        width = 15)
+
+# write out adonis outputs
+capture.output(
+  for(i in names(habitat_plots)){
+   
+    anova_out <- habitat_plots[[i]][[2]]
+    r_sq <- anova_out$`Sum Sq`[1] / anova_out$`Sum Sq`[3]
+    
+    print(i)
+    print(anova_out)
+    print(paste0("R2 = ", r_sq))
+  },
+  file = "outputs/permanova/by_habitat_emp3_permanova.txt")
+
 
 
 ```

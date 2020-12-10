@@ -379,6 +379,7 @@ complex_heatmap <-
     #        tax = all_tax
     #        zscale = T
     #        description = NULL
+    
     # filter metadata where selected metadata column matches the group
     group_meta <- all_meta[all_meta[[metadata_column]] %in% group,]
     

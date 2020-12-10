@@ -19,8 +19,7 @@ library(dplyr)
 library(ggplot2)
 library(data.table)
 
-# Check working directory
-stopifnot(getwd() == "/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
+
 
 # set ggplot theme
 theme_set(theme_bw())
@@ -51,7 +50,6 @@ uniform_gradient_color <- function(palname = pal_c){
 #    scale_fill_brewer(palette=palname, ...)
 #  }
 
-
 ```
 
 ## Reading in the metadata
@@ -59,14 +57,8 @@ The metadata has been split into unique sample metadata and preparation informat
 in accordance with the EMP data uploading guidelines. 
 The 'sample_name' column links sample prep and collection metadata.
 
-```{r}
+### Preparation Information
 
-# sample metadata
-samples <- fread("../data/raw/sample/unique_waimea_hiseq_samples_emp.tsv")
-
-```
-
-## Preparation info
 - *sample_name* = Unique integer coresponding to a sample taken from the field. Exception: controls duplicated across sequencing runs were given unique IDs for the same sample. Matches sample metadata column.
 - *barcode* = 12-mer index from EMP aliquots. Unique per sample per run.
 - *linker* = Primer linker sequences.
@@ -87,9 +79,7 @@ samples <- fread("../data/raw/sample/unique_waimea_hiseq_samples_emp.tsv")
 - *instrument_model* = Sequencing instrument model. 
 
 
-
-
-## Metadata Categories
+### Sample Data Information
 
 Sample Identifiers:
 
@@ -148,12 +138,17 @@ Some samples in this data set are not associated with the Waimea project.
 Filter those samples out.
 
 ```{r}
+# read in
+samples <- fread("../data/raw/sample/unique_waimea_hiseq_samples_emp.tsv")
+
 # projects
 unique(samples$project_name)
 
 # filter by project
-samples <- samples[project_name %in% c("Keck","JoshMS"),]
+samples <- samples[project_name %in% c("Keck","JoshMS") & site_name != "Lab",]
 
+# count all beach samples as riverine
+samples[site_name == "Beach" & sample_type == "WaterSaline", habitat:= "Riverine"]
 
 
 ```
@@ -168,12 +163,29 @@ Summarize the sample types in each habitat and by each site to make sure verythi
 # sample counts of each type by habitat
 samples[ ,
          .N,
-         keyby= .(habitat)]
+         by= .(habitat)]
 
 # sample counts by site
-samples[ ,
+site_sum <- samples[ ,
+                       .N,
+                       by = .(site_name)]
+capture.output(print(paste0("Global Sample Count Mean = ", mean(site_sum$N), "SD = ", sd(site_sum$N))),
+               file = "../data/processed/global_mean_sample_per_plot.txt")
+
+# sample count summary by habitat and site
+hab_site_sum <- samples[ ,
          .N,
-         keyby = .(site_name)]
+         by = .(habitat, site_name)]
+
+
+
+hab_site_means <- hab_site_sum[ ,
+                               .(mean_sample_count = mean(N), sd = sd(N)),
+                               by = habitat]
+
+fwrite(x = hab_site_means, "../data/processed/hab_site_means.csv")
+fwrite(x = site_mean, "../data/processed/global_mean_sample_per_plot.csv")
+
 ```
 
 ## Trophic Summary

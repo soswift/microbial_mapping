@@ -28,8 +28,6 @@ pipeline output data files for 16s and its
 
 
 ```{r}
-
-
 # sample metadata
 raw_samples  <- fread("../data/processed/interim/unique_waimea_hiseq_samples_emp_spatial.tsv",
                       sep = "\t", header = T)
@@ -133,7 +131,9 @@ The function takes the csv files written out above. Each file is read in, re-org
 Make a phyloseq object for downstream analysis and filtering.
 Do some basic filtering based on OTU taxa and sample data.
 
-Peform subsampling and relative abundance transformation
+Peform subsampling and relative abundance transformation.
+
+Simplify trophic information
 
 ```{r}
 # make phyloseq
@@ -152,6 +152,9 @@ MM_16S_phy <- subset_taxa(MM_16S_phy, (order!="Chloroplast") &
                                          (kingdom != "Archaea") &
                                          (family != "Mitochondria") &
                                          (kingdom != "Unknown"))
+
+MM_16S_phy@sam_data$trophic[!MM_16S_phy@sam_data$trophic %in% c("PrimaryProducer", "E")]
+                                      
 # filter out empty samples
 MM_16S_phy <- prune_samples(sample_sums(MM_16S_phy) != 0, MM_16S_phy)
 
@@ -176,7 +179,6 @@ MM_16S_phy <-  transform_sample_counts(MM_16S_phy, function(x) x / sum(x))
 saveRDS(MM_16S_phy, "../data/processed/cleaned/MM_16S_phy.rds")
 
 
-
 write.csv(sample_data(MM_16S_phy), "../data/processed/cleaned/rel_abund_MM_16S_sample_data.csv")
 
 write.csv(otu_table(MM_16S_phy), "../data/processed/cleaned/rel_abund_MM_16S_otu_table.csv")
@@ -187,17 +189,3 @@ write.csv(tax_table(MM_16S_phy), "../data/processed/cleaned/rel_abund_MM16S_taxo
 rm(MM_16S_phy)
 
 ```
-
-
-
-
-
-```
-### Data Exports For Marine Fungi
-
-Export just marine fungal data for Syrena
-
-```{r}
-
-```
-
