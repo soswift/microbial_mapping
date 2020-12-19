@@ -5,8 +5,13 @@ library(ggplot2)
 library(gridExtra)
 library(ggpubr)
 
-h2_out  <-read.table("../data/processed/nestedness_outputs/all_samples_empo_3_H2.out", sep = "\t", col.names = c("File","Index","Value"))
-nodf_out <- read.table("../data/processed/nestedness_outputs/all_samples_empo_3_NODF.out", sep = "\t", col.names = c("File","Index","Value"))
+h2_out  <-read.table("../data/processed/nestedness_outputs/all_samples_empo_3_H2.out",
+                     sep = "\t",
+                     col.names = c("File","Index","Value"))
+
+nodf_out <- read.table("../data/processed/nestedness_outputs/all_samples_empo_3_NODF.out",
+                       sep = "\t",
+                       col.names = c("File","Index","Value"))
 
 nest_out <- rbind(h2_out, nodf_out)
 nest_out$Group <- sub(".+\\/(.+).csv", "\\1",nest_out$File)
