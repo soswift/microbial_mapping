@@ -1,0 +1,11 @@
+  Tukey multiple comparisons of means
+    95% family-wise confidence level
+
+Fit: aov(formula = lm(Value ~ Habitat, nest_ind))
+
+$Habitat
+                           diff        lwr       upr     p adj
+Riverine-Marine       -2.044259  -6.384494  2.295977 0.4543156
+Terrestrial-Marine   -11.633757 -16.523472 -6.744042 0.0000617
+Terrestrial-Riverine  -9.589498 -14.625207 -4.553789 0.0005501
+

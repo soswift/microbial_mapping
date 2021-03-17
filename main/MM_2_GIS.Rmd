@@ -18,7 +18,7 @@ There are several large spatial libraries required for this analysis.
 spatial_libs <- c("rgdal","rayshader","MASS","ggmap", "FedData","raster","sp", "automap","geoviz","sf", "ggspatial","rnaturalearth","rnaturalearthdata")
 
 # general
-general_libs <- c("data.table","dplyr","tidyr","ggplot2","viridisLite","data.table")
+general_libs <- c("data.table","dplyr","tidyr","ggplot2","viridisLite")
 
 # load libraries invisibly
 invisible( lapply( c(spatial_libs,general_libs),
@@ -197,6 +197,7 @@ crs(elev_ras)
 
 # project into standard format
 elev_ras <- projectRaster(elev_ras, crs=std_proj)
+writeRaster(elev_ras, "../data/processed/spatial/elevation_raster.asc")
 
 
 
@@ -240,13 +241,13 @@ http://rainfall.geography.hawaii.edu/rainfall.html
 
 
 # read annual rainfall txt file as raster
-rain_ras <- raster("../data/raw/spatial/rfgrid_mm_oahu_ann.txt", crs = std_proj)
-
+rain_ras <- raster(x="../data/raw/spatial/rfgrid_mm_oahu_ann.txt")
+crs(rain_ras) <- std_proj
 # crop to correct bbox
 rain_ras <- crop(rain_ras, bbox_extent)
 
 plot(rain_ras)
-
+writeRaster(rain_ras, "../data/processed/rain_raster.asc")
 # and convert raster to data table and matrix for making other kinds of plots
 rain_dt  <- raster::as.data.frame(rain_ras, xy=T) %>% as.data.table()
 rain_mat <- as.matrix(rain_ras) %>% t()
@@ -309,6 +310,7 @@ crop_sat <-function(rast_file = "../data/raw/spatial/oahu_landsat/Oahu_Landsat_1
   rast_extent <- spTransform(extent, CRSobj = rast_proj)
   
   small_rast <- crop(rast, rast_extent)
+  writeRaster(small_rast, "../data/processed/spatial/sat_raster.asc")
   
   message("writing out cropped png")
   
@@ -364,6 +366,8 @@ point_data <- meta[habitat != "Riverine" , .N, by = spatial_cols]
 
 point_data$habitat <- sub("Terrestrial", "Terrestrial/Riverine",point_data$habitat)
 
+fwrite(point_data, "../data/processed/spatial/sampling_site_points.csv")
+
 # simple point map with normal base layer
 base_point_map  <- base_map +
                     geom_point(aes(x = longitude_deg, y = latitude_deg, color = habitat), data = point_data)
@@ -407,7 +411,11 @@ Luckily, I already have the shapefile.
 streams      <- st_read('../data/raw/spatial/darstreams.kml')
 waimea_river <- streams[streams$STREAM_NAM == "Waimea R",]
 
+
+
 test <- waimea_river[10,]
+
+write_sf(obj = waimea_river, "../data/processed/spatial/waimea_river.kml")
 
 plot(st_geometry(waimea_river))
 
@@ -483,6 +491,13 @@ ggplot()+
 
 # With Oahu inset
 oahu_limits <- c(-158.305366, 21.212964, -157.624682, 21.766562)
+
+oahu_extent <- polygon_from_extent(raster::extent(oahu_limits[1],oahu_limits[3], oahu_limits[2], oahu_limits[4]),
+                               proj4string = "+proj=longlat +ellps=GRS80 +datum=WGS84 +no_defs")
+
+oahu_coast <- st_intersection(hi_coast, st_as_sf(oahu_extent))
+write_sf(oahu_coast, "../data/processed/spatial/oahu_cost.shp")
+
 
 p2 <-ggplot()+
       # coastline

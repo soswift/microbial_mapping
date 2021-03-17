@@ -19,8 +19,7 @@ library(phyloseq)
 library(data.table)
 library(viridisLite)
 library(vegan)
-library(parallel)
-library(RVAideMemoire)
+#library(RVAideMemoire) Memory intensive
 
 set.seed(seed = 2020)
 
@@ -35,12 +34,9 @@ theme_set(theme_bw())
 
 # get color palettes 
 
-trophic_colors <- get_waimea_colors(return_all = T,
-                                    cat_type = "trophic")
-habitat_colors <- get_waimea_colors(return_all = T,
-                                    cat_type = "habitat")
-emp_colors     <- get_waimea_colors(return_all = T,
-                                    cat_type = "emp") 
+trophic_colors <- get_waimea_colors(cat_type = "trophic")
+habitat_colors <- get_waimea_colors(cat_type = "habitat")
+emp_colors     <- get_waimea_colors(cat_type = "emp")
 
 # set log transformed color palette for gradient values (e.g. elevation)
 pal_c = "plasma"
@@ -151,21 +147,25 @@ set.seed(2020)
 MM.ord <- ordinate(physeq = MM_16S_phy,
                    method =  "NMDS",
                    distance = "bray")
+saveRDS(MM.ord, "../data/processed/all_sample_ordinations.rds")
+
+
 ```
 
 ### Plot Ordinations
 
 ```{r}
+MM.ord <- readRDS("../data/processed/all_sample_ordinations.rds")
 
 # 1) plot all samples colored by habitat
-p <-
+p1 <-
   plot_ordination(MM_16S_phy,
                   MM.ord,
                   type = "samples",
                   color = "habitat",
                   shape = "empo_2")
 
-p <- ggplot(data = p$data, mapping = p$mapping) +
+p1 <- ggplot(data = p1$data, mapping = p1$mapping) +
         scale_shape_discrete(solid = T) +
         # adjust point transparency and size
         geom_point( size = 2,
@@ -173,30 +173,30 @@ p <- ggplot(data = p$data, mapping = p$mapping) +
         # use standardized habitat colors
         scale_color_manual(values = habitat_colors,
                            drop = F) +
-        ggtitle("All Samples, Bray Curtis Distance, NMDS - By Habitat") 
-p
+        ggtitle("Habitat") 
+p1
 
 ggsave(file.path(out_dir, "all_samples_habitat_nmds.pdf"))
 
 # 2) plot by all samples colored by trophic level
-p <-
+p2 <-
   plot_ordination(MM_16S_phy,
                   MM.ord,
                   type = "samples",
                   color = "trophic",
                   shape = "empo_2")
 
-p <- ggplot(p$data, p$mapping) +
+p2 <- ggplot(p2$data, p2$mapping) +
         scale_shape_discrete(solid = T) +
         scale_color_manual(values = trophic_colors)+
         geom_point( size = 2, alpha = 0.7)+
-  ggtitle("All Samples, Bray Curtis Distance, NMDS - By Trophic")
-p
+  ggtitle("Trophic")
+p2
 
 ggsave(file.path(out_dir, "all_samples_trophic_nmds.pdf"))
 
 # plot all samples colored by gradient  
-p <-
+p3 <-
   plot_ordination(MM_16S_phy,
                   MM.ord,
                   type = "samples",
@@ -204,14 +204,14 @@ p <-
                   shape = "habitat") +
   scale_shape_discrete(solid = T)  +
   uniform_gradient_color()  +
-  ggtitle("All Samples, Bray Curtis Distance, NMDS - By Elevation")
-p
+  ggtitle("Elevation")
+p3
 
 ggsave(file.path(out_dir, "all_samples_elevation_nmds.pdf"))
 
 
 # plot by empo
-p <-
+p4 <-
   plot_ordination(MM_16S_phy,
                   MM.ord,
                   type = "samples",
@@ -219,12 +219,12 @@ p <-
                   shape = "habitat")+
   scale_shape_discrete(solid = T) +
   scale_color_manual(values = emp_colors)+
-  ggtitle("All Samples, Bray Curtis Distance, NMDS - By EMPO 1")
-p
+  ggtitle("EMPO 1")
+p4
 ggsave(file.path(out_dir, "all_samples_empo1_nmds.pdf"))
 
 
-p <-
+p5 <-
   plot_ordination(MM_16S_phy,
                   MM.ord,
                   type = "samples",
@@ -233,9 +233,40 @@ p <-
   scale_shape_discrete(solid = T) +
   scale_color_manual(values = emp_colors)+
   
-  ggtitle("All Samples, Bray Curtis Distance, NMDS - By EMPO 2")
-p
+  ggtitle("EMPO 2")
+p5
 ggsave(file.path(out_dir, "all_samples_empo2_nmds.pdf"))
+
+p6 <-
+    plot_ordination(MM_16S_phy,
+                  MM.ord,
+                  type = "samples",
+                  color = "site_name",
+                  shape = "habitat") +
+  scale_shape_discrete(solid = T) 
+  
+  ggtitle("Site")
+p6
+ggsave(file.path(out_dir, "all_samples_site_nmds.pdf"))
+
+# convert plot to grob
+nmds_grobs <-lapply(list(p1,p2,p3,p4,p5,p6), ggplotGrob)
+
+# set a standard width for all grobs
+std_width <- nmds_grobs[[1]]$widths
+nmds_std <- lapply(nmds_grobs, function(x) {
+                  x$widths <- std_width
+                  return(x)})
+# arrange ordinations
+g <- ggarrange(plotlist=nmds_std,
+                nrow = 3, ncol = 2)
+
+
+ggsave(paste0("outputs/nmds/all_samples_facet_NMDS.pdf"),
+       plot = g, 
+       width = 12,
+       height = 14)
+
 
 ```
 
@@ -272,9 +303,10 @@ ordinate_habitat <- function(x){
     coord_fixed(ratio = 1)
   
   # calculate permanova
-  adonis_out <- adonis.II(distance(MM_sub, method = "bray") ~ empo_3 ,data = as(sample_data(MM_sub), "data.frame"))
-  write.csv(adonis_out, file = paste0("outputs/permanova/permanova_",hab,"_summary.csv"))
-  return(list(p, adonis_out))
+  # adonis_out <- adonis.II(distance(MM_sub, method = "bray") ~ empo_3 ,data = as(sample_data(MM_sub), "data.frame"))
+  # write.csv(adonis_out, file = paste0("outputs/permanova/permanova_",hab,"_summary.csv"))
+  # return(list(p, adonis_out))
+  return(p)
 }
 
 # run function
@@ -288,7 +320,7 @@ names(habitat_plots) <- habitat_types
 
 for(i in names(habitat_plots)){
   ggsave(filename = file.path(out_dir, paste0("habitat_", i,"_nmds.pdf", sep = "")),
-         plot = habitat_plots[[i]][[1]])
+         plot = habitat_plots[[i]])#[[1]])
 }
 
 # facet habitat plots into single figure
@@ -350,7 +382,7 @@ trophic_plots
 names(trophic_plots) <- trophic_types
 
 for(i in names(trophic_plots)){
-  ggsave(filename = paste("../outputs/figures/nmds/trpohic_", i,"_nmds.pdf", sep = ""), plot = trophic_plots[[i]])
+  ggsave(filename = paste("../outputs/figures/nmds/trophic_", i,"_nmds.pdf", sep = ""), plot = trophic_plots[[i]])
 }
 
 ```

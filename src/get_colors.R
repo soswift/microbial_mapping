@@ -5,7 +5,7 @@
 # return_all = if set to TRUE, returns a full named vector of all colors for specified category type(s)
 # cat_type = the type of category, either "emp", "habitat", or trophic", useful when combined with return_all
 
-get_waimea_colors <- function(cat_name = NULL, return_all = FALSE, cat_type = c("emp","habitat","trophic")){
+get_waimea_colors <- function(cat_type = c("emp","habitat","trophic","site")){
 
   # colors as defined in Thompson et al 2017
   # https://github.com/biocore/emp/blob/master/code/colors-styles/empcolors.py
@@ -58,13 +58,32 @@ get_waimea_colors <- function(cat_name = NULL, return_all = FALSE, cat_type = c(
                       "Consumer" = "#beaed4",
                       "Other"= "black" # gray for null value
                       )
+  # discrete colors for sites
+  # not used frequently, just get the standard rainbow pattern
+  site_colors <- rainbow(14)
+  names(site_colors) <-c( "Beach",
+                          "Confluence",
+                          "DrumRoad",
+                          "Entrance",
+                          "Estuary",
+                          "OutsideOcean",
+                          "OutsideRocks",
+                          "Ridge",
+                          "SharksCove",
+                          "ThreeTablesBeach",
+                          "TwinRocks",
+                          "UppersBeach",
+                          "WaimeaBay",
+                          "Waterfall")
+  
   
   # store all colors in a list
   colors_list <- list(emp_colors,
                       habitat_colors,
-                      trophic_colors)
+                      trophic_colors,
+                      site_colors)
   
-  type_names <- c("emp","habitat","trophic")
+  type_names <- c("emp","habitat","trophic","site")
   names(colors_list) <- type_names
   
   # convert to data.frame
@@ -85,20 +104,12 @@ get_waimea_colors <- function(cat_name = NULL, return_all = FALSE, cat_type = c(
   all_colors <- do.call('rbind', all_colors)
   
   
-  # return a single value
-  if(!is.null(cat_name)){
-    one_color <- all_colors[all_colors$Type %in% cat_type & all_colors$Name %in% cat_name, "Value"]
-    one_color <- as.character(one_color)
-  return(one_color)
-  }
   # return all colors as a named vector
-  if(isTRUE(return_all)){
     some_colors <- as.character(
       all_colors[all_colors$Type %in% cat_type, "Value"])
     names(some_colors) <- all_colors[all_colors$Type %in% cat_type, "Name"]
 
   return(some_colors)
-  }
   
 }
 
