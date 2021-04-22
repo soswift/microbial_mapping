@@ -13,10 +13,8 @@ Pipeline output files are read in, written out as cleaned flat files, and read b
 ```{r}
 library(data.table)
 library(phyloseq)
-# if(getwd() != "/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
-#   {
-# setwd("/home/sean/Documents/Bioinformatics/Projects/Waimea/microbial_mapping/main")
-# }
+library(R.utils)
+
 
 ```
 
@@ -30,14 +28,17 @@ pipeline output data files for 16s and its
 ```{r}
 # sample metadata
 raw_samples  <- fread("../data/processed/interim/unique_waimea_hiseq_samples_emp_spatial.tsv",
-                      sep = "\t", header = T)
+                      sep = "\t",
+                      header = T)
 
 # library prep metadata
 prep_16s <- fread("../data/raw/sample/combined_hiseqs_bioblitz_mapping - 16S_prep_info.tsv",
-                  sep = "\t", header = T)
+                  sep = "\t",
+                  header = T)
 
 prep_its <- fread("../data/raw/sample/combined_hiseqs_bioblitz_mapping - ITS_prep_info.tsv",
-                  sep = "\t", header = T)
+                  sep = "\t",
+                  header = T)
 
 # joined prep and sample metadata
 meta_16s <- merge(prep_16s, raw_samples, all.x=T)
@@ -45,9 +46,9 @@ meta_its <- merge(prep_its, raw_samples, all.x=T)
 
 meta_all <-rbindlist(list(meta_16s,meta_its))
 
-fwrite(meta_16s,"../data/processed/interim/combined_prep_sample_metadata_16s.csv")
-fwrite(meta_its,"../data/processed/interim/combined_prep_sample_metadata_its.csv")
-fwrite(meta_all,"../data/processed/interim/combined_prep_sample_metadata_16sandits.csv")
+fwrite(meta_16s, "../data/processed/interim/combined_prep_sample_metadata_16s.csv")
+fwrite(meta_its, "../data/processed/interim/combined_prep_sample_metadata_its.csv")
+fwrite(meta_all, "../data/processed/interim/combined_prep_sample_metadata_16sandits.csv")
 
 # 16s data
 abund_16s_file <- "../data/raw/sequence/waimea_16S_v1/abundance_table_100.shared"
@@ -55,11 +56,6 @@ tax_16s_file  <- "../data/raw/sequence/waimea_16S_v1/annotations_100.taxonomy"
 meta_16s_file <- "../data/processed/interim/combined_prep_sample_metadata_16s.csv"
 
 
-# its data
-
-abund_its_file <- "../data/raw/sequence/waimea_ITS_v1/Results/abundance_table_100.tsv"
-tax_its_file   <- "../data/raw/sequence/waimea_ITS_v1/Results/annotations_sintax_100.tsv"
-meta_its_file  <- "../data/processed/interim/combined_prep_sample_metadata_its.csv"
 
 ```
 
@@ -90,37 +86,15 @@ mm_16s <- clean_16S_tables(
                   )
 
                 
-abund<- mm_16s[["abundance"]]
 
-
-
-object.size(transpose(abund)) %>% print(units = "GB")
 
 
 # write out the list of dataframes as r object
 saveRDS(mm_16s, file = "../data/processed/cleaned/mm_16s.rds")
 
-# remove variable to save memory
+# remove variable
 rm(mm_16s)
 gc()
-
-source("../src/clean_and_query_ITS.R")
-
-## clean_its_tables outputs a list of cleaned versions of each dataframe
-## 'cleaning' means renaming some columns and generally tidying the pipeline outputs
-## sequences are not affected
-## names are checked to make sure they agree between all files
-## the function writes out each cleaned file as a csv
-
-mm_its <- clean_ITS_tables(
-                  abundance_file = abund_its_file,
-                  taxonomy_file = tax_its_file,
-                  metadata_file = meta_its_file,
-                  description = "mm_its_hiseqs",
-                  output_dir = "../data/processed/cleaned",
-                  id_column = "sequencing_id"
-)
-
 
 ```
 
@@ -136,7 +110,7 @@ Peform subsampling and relative abundance transformation.
 Simplify trophic information
 
 ```{r}
-# make phyloseq
+# make phyloseq object
 source("../src/make_phyloseq.R")
 
 MM_16S_phy <- make_phyloseq(abund_file  = "../data/processed/cleaned/mm_16s_hiseqs_abundance_table.csv",

@@ -12,7 +12,6 @@ source("../src/filtering_functions.r")
 
 
 # Read in raw otu table and sample data
-
 otu_file         <- "../data/processed/cleaned/raw_mm_16s_hiseqsabundance_table.csv"
 sample_data_file <- "../data/processed/cleaned/mm_16s_hiseqs_metadata_table.csv"
 
@@ -25,10 +24,11 @@ sample_ids <- paste0("x",otu_table_raw$Group)
 otu_table_raw[ , Group := NULL]
 otu_mat <- t(setDF(otu_table_raw, rownames = sample_ids))
 
-# Drop samples with less than 1000 reads
+# Drop controls and samples with less than 1000 reads
+sample_dat <- sample_dat[habitat %in% c("Marine","Terrestrial","Riverine")]i
+otu_mat[row.names(otu_mat) %in% sample_dat$sample_id]
 otu_mat <- otu_mat[ , colSums(otu_mat) > 10000]
-
-
+otu_mat
 
 figures_folder_fp <- "outputs/rarefaction"
 
@@ -50,7 +50,7 @@ saveRDS(col_curve_list_raw, "../data/processed/binned_collectors_curve.rds")
 pdf(paste(figures_folder_fp, "/all_samples_binned_collectors_curves.pdf", sep=""), useDingbats=F)
 plot_multiple_binned_collectors_curves(col_curve_list_raw, ylab="Observed Richness of ASVs",
                                        n_bins=6,
-                                       bin_d=20000,
+                                       bin_d=20000
                                        )
 dev.off()
 
@@ -74,7 +74,7 @@ for(a_habitat in unique(sample_dat$habitat)){
   pdf(paste(figures_folder_fp, "/", a_habitat, "_binned_collectors_curves.pdf", sep=""), useDingbats=F)
   plot_multiple_binned_collectors_curves(col_curve_list_habitat, ylab="Observed Richness of ASVs",
                                          n_bins=6,
-                                         bin_d= 20000,
+                                         bin_d= 20000
   )
   dev.off()
   
@@ -88,8 +88,8 @@ all_samples <- rowSums(otu_mat)
 # saveRDS(all_curve, "../data/processed/all_sample_curve.rds")
 
 all_curve <-readRDS("../data/processed/all_sample_curve.rds")
-# plot single curve
 
+# plot single curve
 pdf(paste0(figures_folder_fp,"/all_samples_collectors_curve.pdf"))
 plot(NULL, ylim=c(0, 4e5), xlim=c(0, 1e8), xlab="Number of sequences", ylab = "Number of ASVs")
 points(all_curve$alpha ~ all_curve$step,  type = "l")

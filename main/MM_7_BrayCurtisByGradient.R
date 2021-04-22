@@ -72,7 +72,7 @@ max_dists <- sapply(
   }
 )
 
-# let's organize bra-curtis dists with site information that can be used for plotting
+# organize bray-curtis distances with site information that can be used for plotting
 site_summary <-setDT(sample_dat)[ , .N, by = .(site_name,
                                                rainfall,
                                                elevation,

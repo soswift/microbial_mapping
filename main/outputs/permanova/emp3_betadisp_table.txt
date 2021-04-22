@@ -8,15 +8,37 @@ No. of Positive Eigenvalues: 1120
 No. of Negative Eigenvalues: 289
 
 Average distance to median:
- Aerosol (non-saline)         Animal corpus     Animal distal gut        Animal surface         Fungus corpus          Plant corpus     Plant rhizosphere         Plant surface Sediment (non-saline)     Sediment (saline) 
-               0.5792                0.6888                0.6126                0.5939                0.6465                0.6711                0.5628                0.5712                0.6254                0.3206 
-    Soil (non-saline)  Surface (non-saline)      Surface (saline)    Water (non-saline)        Water (saline) 
-               0.5083                0.6572                0.3892                0.4153                0.4349 
+ Aerosol (non-saline)         Animal corpus     Animal distal gut        Animal surface         Fungus corpus          Plant corpus 
+               0.5792                0.6888                0.6126                0.5939                0.6465                0.6711 
+    Plant rhizosphere         Plant surface Sediment (non-saline)     Sediment (saline)     Soil (non-saline)  Surface (non-saline) 
+               0.5628                0.5712                0.6254                0.3206                0.5083                0.6572 
+     Surface (saline)    Water (non-saline)        Water (saline) 
+               0.3892                0.4153                0.4349 
 
 Eigenvalues for PCoA axes:
 (Showing 8 of 1409 eigenvalues)
 PCoA1 PCoA2 PCoA3 PCoA4 PCoA5 PCoA6 PCoA7 PCoA8 
 45.16 25.94 21.88 18.89 17.19 15.04 12.93 11.35 
+
+$grad_empo_3
+
+	Homogeneity of multivariate dispersions
+
+Call: betadisper(d = grad_dist, group = factor_groups)
+
+No. of Positive Eigenvalues: 802
+No. of Negative Eigenvalues: 202
+
+Average distance to median:
+ Aerosol (non-saline)         Animal corpus     Animal distal gut        Animal surface         Fungus corpus          Plant corpus 
+               0.5792                0.6825                0.6126                0.5939                0.6465                0.6592 
+    Plant rhizosphere         Plant surface Sediment (non-saline)     Soil (non-saline)  Surface (non-saline)    Water (non-saline) 
+               0.5628                0.5712                0.6254                0.5083                0.6572                0.4153 
+
+Eigenvalues for PCoA axes:
+(Showing 8 of 1004 eigenvalues)
+ PCoA1  PCoA2  PCoA3  PCoA4  PCoA5  PCoA6  PCoA7  PCoA8 
+25.503 20.183 18.330 16.945 14.671 11.317  9.665  8.998 
 
 $site_code
 
@@ -36,6 +58,24 @@ Eigenvalues for PCoA axes:
 PCoA1 PCoA2 PCoA3 PCoA4 PCoA5 PCoA6 PCoA7 PCoA8 
 45.16 25.94 21.88 18.89 17.19 15.04 12.93 11.35 
 
+$grad_site_code
+
+	Homogeneity of multivariate dispersions
+
+Call: betadisper(d = grad_dist, group = factor_groups)
+
+No. of Positive Eigenvalues: 802
+No. of Negative Eigenvalues: 202
+
+Average distance to median:
+     1      2      3      4      5      6      7 
+0.6784 0.6784 0.6759 0.6804 0.6799 0.6748 0.6542 
+
+Eigenvalues for PCoA axes:
+(Showing 8 of 1004 eigenvalues)
+ PCoA1  PCoA2  PCoA3  PCoA4  PCoA5  PCoA6  PCoA7  PCoA8 
+25.503 20.183 18.330 16.945 14.671 11.317  9.665  8.998 
+
 $habitat
 
 	Homogeneity of multivariate dispersions
@@ -53,4 +93,22 @@ Eigenvalues for PCoA axes:
 (Showing 8 of 1409 eigenvalues)
 PCoA1 PCoA2 PCoA3 PCoA4 PCoA5 PCoA6 PCoA7 PCoA8 
 45.16 25.94 21.88 18.89 17.19 15.04 12.93 11.35 
+
+$grad_habitat
+
+	Homogeneity of multivariate dispersions
+
+Call: betadisper(d = grad_dist, group = factor_groups)
+
+No. of Positive Eigenvalues: 802
+No. of Negative Eigenvalues: 202
+
+Average distance to median:
+   Riverine Terrestrial 
+     0.6637      0.6823 
+
+Eigenvalues for PCoA axes:
+(Showing 8 of 1004 eigenvalues)
+ PCoA1  PCoA2  PCoA3  PCoA4  PCoA5  PCoA6  PCoA7  PCoA8 
+25.503 20.183 18.330 16.945 14.671 11.317  9.665  8.998 
 

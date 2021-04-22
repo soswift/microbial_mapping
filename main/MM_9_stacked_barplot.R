@@ -1,78 +1,137 @@
-# This script is for generating stacked barplots showing spread across trophic levels and EMPO for top Waimea ASVs
-# Sean Swift 10/20
+# This script is for generating stacked barplots showing spread across trophic levels and EMPO for Waimea ASVs
+# Sean Swift 4/21
 
 library(ggplot2)
-library(phyloseq)
 library(data.table)
 library(ggpubr)
+library(parallel)
 
-# Set up environment
+# Set up environment -----------------
 # get standardized colors for plotting ecological variables
 source("../src/get_colors.R")
 waimea_colors <- get_waimea_colors()
 
+# params
+set.seed(2020)
+options(mc.cores = parallel::detectCores() -1)
+
 # set ggplot theme
 theme_set(theme_minimal())
 
-# Read in phyloseq object
-MM_16S_phy <- readRDS("../data/processed/cleaned/MM_16S_phy.rds")
+# Define functions ---------------------
+# read_hpc_abund() is a function for reading and cleaning C-MAIKI pipeline OTU table
+read_hpc_abund <- function(abundance_file){
+
+  # read in
+  abundance_table <- fread(abundance_file)
+
+  # drop extra columns
+  abundance_table[, c('label','numOtus') :=NULL]
+
+  # transpose, keep OTU names
+  abundance_table <- transpose(abundance_table,
+                               keep.names = "OTU_ID",
+                               make.names = "Group")
+
+  setkey(abundance_table,"OTU_ID")
+
+  return(abundance_table)
+}
 
 
-# simplify trophic levels to Environmental, PrimaryProducer, and Consumer
-sample_data(MM_16S_phy)$trophic[!(sample_data(MM_16S_phy)$trophic %in%
-                                    c("Environmental", "PrimaryProducer"))] <- "Consumer"
+# Identify data files --------------------
+#HPC file locations
+ otu_file <-   "/home/seanos/cmaiki-lts/seanos/waimea/pipeline/waimea_16S_v3/abundance_table_100.shared"
+ meta_file  <- "/home/seanos/cmaiki-lts/seanos/waimea/pipeline/waimea_16S_v3/combined_prep_sample_metadata_16s.csv"
 
-# Pull out the most abundant 200 ASVs from the whole study
-top_asv_names <- names(sort(taxa_sums(MM_16S_phy), decreasing = TRUE))#[1:5000])
-top_phy       <- prune_taxa(top_asv_names, MM_16S_phy)
+asv_table <- read_hpc_abund(otu_file)
 
-# pull out abundance counts and sample data as data.tables
-top_asv_table  <- setnames( data.table(as(otu_table(top_phy),"matrix"),
-                                       keep.rownames = T)
-                            ,"rn", "OTU_ID")
+# read in metadata
+sam_dat <- fread(meta_file, colClasses = "character")
 
-top_asv_sample <- setnames(data.table(as(sample_data(top_phy), "matrix"),
-                                      keep.rownames = T),
-                           "rn", "sequencing_id")
+# re-classify trophic level
+sam_dat[!(trophic %in% c("Environmental", "PrimaryProducer")), trophic := "Consumer"]
 
-# reshape into long format for ggplot
-long_asvs <- melt.data.table(top_asv_table,
+# make sure metadata plays nice with asv table
+sam_dat <- sam_dat[sample_type != "" & sequencing_id %in% names(asv_table)]
+
+# subset ASVs
+keep_cols <- c("OTU_ID", sam_dat$sequencing_id)
+asv_table <- asv_table[ , ..keep_cols]
+asv_table <- asv_table[rowSums(asv_table[ , -1]) > 0 ]
+
+some_asvs <- sample(1:nrow(asv_table), 5000)
+asv_table <- asv_table[ some_asvs ,]
+
+
+
+# reshape data into long format for ggplot
+long_asvs <- melt.data.table(asv_table,
                              id.vars = "OTU_ID",
                              variable.name = "sequencing_id",
                              value.name = "rel_abund")
 
-# add in relevant sample data for filling stacked barplots
-eco_vars <-c("sequencing_id", "habitat", "trophic", "empo_1", "empo_2", "empo_3", "site_name")
 
 
-long_asvs <- merge(long_asvs,
-                   top_asv_sample[ , ..eco_vars],
-                   by = "sequencing_id")
+# identify relevant sample data for filling stacked barplots
+eco_vars <-c("sequencing_id",
+             "habitat",
+             "trophic",
+             "empo_1",
+             "empo_2",
+             "empo_3",
+             "site_name")
+
+asvs_w_meta <- merge(long_asvs, sam_dat[ , ..eco_vars])
+
+fwrite(asvs_w_meta, "random_5k_asvs.csv")
+
+# Plot out stacked barcharts ------------
+# filled barcharts with ecologically informative variables (habitat type, trophic level, and EMPO)
 
 
-# plot out stacked barcharts filled with ecologically informative variables (habitat type, trophic leve, and EMPO)
+# TODO: Change to pa instead of abund  ************************
 
+# Restart by reading in the intermediate file if you need to alter the plots
+asvs_w_meta <- fread("../data/processed/stacked_bars/random_5k_asvs.csv",
+                     header = T)
+# add a column for sample occupancy rather than read abundance
+asvs_w_meta[ , pa := rel_abund][ pa > 0 , pa := 1]
 
-eco_plots <- lapply(
-                  eco_vars[-1],
+eco_plots <-  lapply(
+                  X = eco_vars[-1],
                   FUN = function(an_eco_var) {
+                      
+                    print(an_eco_var)
+                    dat <- copy(asvs_w_meta)
                     
-                    dat <- copy(long_asvs[ , .(rel_abund = sum(rel_abund)), by = c("OTU_ID",an_eco_var)])
+                    # sum by abundance by the ecological variable
+                    dat <- dat[ ,.(pa = sum(pa)), by = c(an_eco_var, "OTU_ID")]
                     
-                    # Order the bars by distribution across the ecological variable (distance matrix + hclust)
                     
+                    # order the bars using clustering (distance matrix + hclust)
                     cast_f <- as.formula(paste("OTU_ID ~", an_eco_var))
-                    wide <- dcast(dat, cast_f, value.var = "rel_abund")
+                    wide <- dcast(dat,
+                                  cast_f,
+                                  value.var = "pa")
+                    
                     wide_mat <- as.matrix(wide[ , -1])
                     row.names(wide_mat) <- wide[ , OTU_ID]
-
-                    bar_order <- hclust(d = dist(wide_mat), method = "ward.D")
+                    print("clustering")
+                    
+                    bar_order <- hclust(d = dist(wide_mat),
+                                        method = "ward.D2")
+                    
                     dat[ , OTU_ID := factor(OTU_ID, levels = bar_order$labels[bar_order$order])]
+                    print("plotting")
                     
                     # Plot the stacked bars
-                    p <- ggplot(dat, aes_(quote(OTU_ID),quote(rel_abund), fill = as.name(an_eco_var)), wide_mat) +
-                         geom_bar(position = "fill", stat = "identity") +
-                         labs(x = "Top ASVs", y = "Percent Of Total Relative Abundance")+
+                    p <- ggplot(dat, aes_(x = quote(OTU_ID), 
+                                          y = quote(pa),
+                                          fill = as.name(an_eco_var))) +
+                         geom_bar(position = "fill",
+                                  stat = "identity") +
+                         labs(x = "ASVs", y = "Proportion of total occurances")+
                          # Standardized color scheme
                          scale_fill_manual(values = waimea_colors, drop = T) +
                          theme_pubclean()+
@@ -82,18 +141,21 @@ eco_plots <- lapply(
                                panel.grid.minor = element_blank(),
                                panel.background = element_blank(),
                                legend.position = "right")
-                    
+                    print("saving")
                     ggsave(
-                      filename = paste(
-                        "outputs/stacked_barplots/", an_eco_var, "_stacked_barplot.png"),
-                      dpi = 300,
+                      filename = paste0("outputs/stacked_barplots/full_data_subset/", an_eco_var, "_stacked_barplot.pdf"),
+                      width = 10,
+                      heigh = 7,
                       plot = p )
                     
                     return(p)
-                  })
+                  }
+                  )
+saveRDS(eco_plots, "../data/processed/stacked_bars/plots.rds")
+
 
 # convert plot to grob
-stack_grobs <-lapply(eco_plots, ggplotGrob)
+stack_grobs <-mclapply(eco_plots, ggplotGrob)
 
 # set a standard width for all grobs
 std_width <- stack_grobs[[1]]$widths
@@ -102,10 +164,12 @@ stack_std <- lapply(stack_grobs, function(x) {
   return(x)})
 # arrange ordinations
 g <- ggarrange(plotlist=stack_std,
-               nrow = 3, ncol = 2)
+               nrow = 3,
+               ncol = 2,
+               labels = as.list( letters[1:length(eco_plots)]) )
 
 
-ggsave(paste0("outputs/stacked_barplots/facet_stacked_barplot.pdf"),
+ggsave("outputs/stacked_barplots/full_data_subset/facet_stacked_barplot.pdf",
        plot = g, 
        width = 10,
        height = 15)

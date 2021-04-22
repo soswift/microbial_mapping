@@ -4,12 +4,10 @@ output: html_notebook
 ---
 
 # Document Summary
-This document is a guide to the different metadata categories, sample numbers, sampling sites, etc. that are included in the microbial mapping dataset. 
+This document is a guide to the different metadata categories, sample numbers, sampling sites, etc. that are included in the Waimea dataset. 
 
-The goal is to give a good introudction to the data collection and project structure.
+The goal is to give an introduction to the data collection and project structure.
 The final figure is a summary of all the samples that are included in the sequencing data. 
-
-Code does not require abundance files and can be run locally.
 
 ## Libraries etc.
 Load some basic data manipulation and visualization libraries.
@@ -40,12 +38,9 @@ uniform_gradient_color <- function(palname = pal_c){
 
 source("../src/get_colors.R")
 
-trophic_colors <- get_waimea_colors(return_all = T,
-                                    cat_type = "trophic")
-habitat_colors <- get_waimea_colors(return_all = T,
-                                    cat_type = "habitat")
-emp_colors     <- get_waimea_colors(return_all = T,
-                                    cat_type = "emp") 
+trophic_colors <- get_waimea_colors(cat_type = "trophic")
+habitat_colors <- get_waimea_colors(cat_type = "habitat")
+emp_colors     <- get_waimea_colors(cat_type = "emp") 
 
 ```
 
@@ -56,7 +51,7 @@ The 'sample_name' column links sample prep and collection metadata.
 
 ### Preparation Information
 
-- *sample_name* = Unique integer coresponding to a sample taken from the field. Exception: controls duplicated across sequencing runs were given unique IDs for the same sample. Matches sample metadata column.
+- *sample_name* = Unique integer coresponding to a sample taken from the field. Exception: controls duplicated across sequencing runs were given unique IDs for the same sample. See 'metadata' column for more information on these controls.
 - *barcode* = 12-mer index from EMP aliquots. Unique per sample per run.
 - *linker* = Primer linker sequences.
 - *primer* = Primer sequence of barcoded primer.
@@ -83,7 +78,7 @@ Sample Identifiers:
 - *sample_name* = Unique integer coresponding to a sample taken from the field. Exception: controls duplicated across sequencing runs were given unique IDs for the same sample.Matches preparation metadata column.
 - *sample_id* = Unique integer combined with some abbreviated metadata information to make it more human readable. Useful for labelling tubes but not necessary for analysis. 
 - *collection_label* = Label as it was written on the original sampling tube. Once sample entered the lab, it was accessioned into the spreadsheet and assigned a unique sample_name.
-- *project_name* = For microbial mapping, the project should be "Keck". A few samples from other projects were included in this dataset. 
+- *project_name* = For microbial mapping, the project should be "Keck". A few unrelated samples are included in the sequencing run that are not included in the analysis. 
 - *geo_loc_name* = Sampling location following earth microbiome project.
 
 Site Identifiers:
@@ -146,9 +141,6 @@ samples <- samples[project_name %in% c("Keck","JoshMS") & site_name != "Lab",]
 
 # count all beach samples as riverine
 samples[site_name == "Beach" & sample_type == "WaterSaline", habitat:= "Riverine"]
-
-# simplify trophic relationships
-samples[!(trophic %in% c("Environmental", "PrimaryProducer")), trophic := "Consumer"]
 
 ```
 

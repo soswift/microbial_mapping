@@ -19,7 +19,7 @@ library(phyloseq)
 library(data.table)
 library(viridisLite)
 library(vegan)
-#library(RVAideMemoire) Memory intensive
+library(RVAideMemoire)
 
 set.seed(seed = 2020)
 
@@ -45,8 +45,6 @@ uniform_gradient_color <- function(palname = pal_c, ...){
 }
 
 
-
-
 ```
 
   
@@ -55,7 +53,6 @@ uniform_gradient_color <- function(palname = pal_c, ...){
 MM_16S_phy <- readRDS("../data/processed/cleaned/MM_16S_phy.rds")
 
 MM_16S_phy
-
 
 meta <- as(as(sample_data(MM_16S_phy), "data.frame"), "data.table")
 
@@ -81,40 +78,97 @@ metadata <- as(sample_data(MM_16S_phy), "data.frame")
 
 all_dist <- distance(MM_16S_phy, method="bray")
 
-# run permanovas using type 2 sum of squares
+# All sites & samples included
+# run permanovas using type 2 sum of squares (adonis.II)
 perm_aovs <- list()
 
 perm_aovs$empo_3  <- adonis.II(all_dist ~ empo_3, data = metadata)
+perm_aovs$trophic <- adonis.II(all_dist ~ trophic, data = metadata)
 perm_aovs$habitat <- adonis.II(all_dist ~ habitat, data = metadata)
 perm_aovs$site_code <- adonis.II(all_dist ~ site_code, data = metadata)
 
-permanova_output <- adonis.II(all_dist ~  empo_3+site_code+habitat+empo_3:site_code+empo_3:habitat+habitat:site_code,
+# Only gradient sites (i.e. no marine samples)
+grad_phy  <- subset_samples(MM_16S_phy, habitat !="Marine")
+grad_data <- as(sample_data(grad_phy), "data.frame")
+grad_dist <- distance(grad_phy, method = "bray")
+
+perm_aovs$grad_empo_3  <- adonis.II(grad_dist ~ empo_3, data = grad_data)
+perm_aovs$grad_trophic <- adonis.II(grad_dist ~ trophic, data = grad_data)
+perm_aovs$grad_habitat <- adonis.II(grad_dist ~ habitat, data = grad_data)
+perm_aovs$grad_site_code <- adonis.II(grad_dist ~ site_code, data = grad_data)
+
+# convert to data.frame
+perm_aovs_df <- do.call("rbind", perm_aovs)
+perm_aovs_df <- data.frame(perm_aovs_df)
+
+# calculate R-squared values
+perm_aovs_df$R2  <-
+  perm_aovs_df$Sum.Sq / perm_aovs_df$Sum.Sq[nrow(perm_aovs_df)]
+
+#write out
+write.csv(perm_aovs_df, 
+          "outputs/permanova/single_variable_permanovas.csv",
+          row.names = T)
+
+# Multi factor permanova on all sites
+permanova_output <- adonis.II(all_dist ~  trophic + site_code + habitat+ # main effects
+                                          trophic:site_code+trophic:habitat+habitat:site_code, # interactions
                           data = metadata,
                           parallel = 2,
                           permutations = 1000
                           )
+
+
 # calculate R-squared values
 permanova_output <- data.frame(permanova_output)
-permanova_output$R2  <- permanova_output$Sum.Sq/permanova_output$Sum.Sq[nrow(permanova_output)]
+permanova_output$R2  <-
+  permanova_output$Sum.Sq / permanova_output$Sum.Sq[nrow(permanova_output)]
 
 # write out
 saveRDS(permanova_output,
         "../data/processed/interim/permanova_output.rds")
-
 write.csv(permanova_output,
-           "outputs/permanova/all_emp3_site_habitat_permanova_table.csv")
+           "outputs/permanova/all_trophic_site_habitat_permanova_table.csv")
+
+# Multi factor permanova on gradient sites
+
+grad_permanova_output <- adonis.II(grad_dist ~  empo_3 + site_code + habitat + # main effets 
+                                                 empo_3:site_code+ empo_3:habitat + habitat:site_code , #interactoins
+                          data = grad_data,
+                          parallel = 2,
+                          permutations = 1000
+                          )
+
+# calculate R-squared values
+grad_permanova_output <- data.frame(grad_permanova_output)
+grad_permanova_output$R2  <-
+  grad_permanova_output$Sum.Sq / grad_permanova_output$Sum.Sq[nrow(grad_permanova_output)]
+
+
+# write out
+saveRDS(grad_permanova_output,
+        "../data/processed/interim/grad_permanova_output.rds")
+write.csv(grad_permanova_output,
+           "outputs/permanova/grad_emp3_site_trophic_habitat_permanova_table.csv")
+
 
 # calculate betadispersion for the three factors being considered
 # this helps us intepret permanova results as composition or dispersion based
 beta_disps <- list()
 
-for(a_factor in c("empo_3","site_code","habitat")){
+for(a_factor in c("empo_3","trophic", "site_code","habitat")){
 
+  # all sites (marine included)
 factor_groups <- metadata[match(labels(all_dist),
                                   metadata$sequencing_id), 
                             a_factor]
-
 beta_disps[[a_factor]] <- betadisper(all_dist, factor_groups)
+
+ # gradient sites
+factor_groups <- grad_data[match(labels(grad_dist),
+                                  grad_data$sequencing_id), 
+                            a_factor]
+beta_disps[[paste0("grad_",a_factor)]] <- betadisper(grad_dist, factor_groups)
 
 }
 
@@ -386,3 +440,5 @@ for(i in names(trophic_plots)){
 }
 
 ```
+
+

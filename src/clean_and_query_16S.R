@@ -1,10 +1,8 @@
 
 
 # read and clean 16S ------------------------------------------------------
-# setwd("~/Desktop/R/CMAIKI_clean_and_query/bacterial_16S/")
 
-
-# define cull.otu function
+# define cull.otu functioni
 
 cull.otu = function(abund.dt, min.num = 0, min.abund = 0, min.single.abund = 0, sample_column = "Group") {
   # This function locates ASV columns that fail to meet relative abundance requirements and drops them from the data.table
@@ -29,7 +27,7 @@ cull.otu = function(abund.dt, min.num = 0, min.abund = 0, min.single.abund = 0, 
   # pull out sample names
   group_names <- abund.dt[[sample_column]]
   
-  # identify columns containing OTU abundance counts
+  # identify columns containing OTU abundance countsi
   otu_cols <- colnames(abund.dt)[colnames(abund.dt) != sample_column]
   
   # copy abundance counts to a new data.table and convert to class numeric
@@ -42,7 +40,6 @@ cull.otu = function(abund.dt, min.num = 0, min.abund = 0, min.single.abund = 0, 
   # add a column with total abundance for each sample
   message("calculating rowsums")
   abund.ra[ , total_abund := rowSums(abund.ra[ , ..otu_cols])]
-  
   
   # convert abundance to relative abundance
   message("converting to relative abundance")
@@ -99,10 +96,20 @@ clean_16S_tables <- function(abundance_file = NULL,
   
   ## Read in tables
   message("reading abundance")
-  abund <- fread( abundance_file, drop =  c("numOtus","label"), colClasses = "numeric", header = T, sep = "\t")
+  abund <- fread( file = abundance_file,
+                  drop =  c("numOtus","label","Group"),
+                  colClasses = "numeric",
+                  header = T)
+  abund_names <- fread(file = abundance_file,
+                       select= "Group",
+                       colClasses = "character",
+                       header=T)
+  abund[ , Group := abund_names ]
   
   message("reading taxonomy")
-  tax   <- fread( taxonomy_file, header = T, sep = "\t")
+  tax   <- fread( taxonomy_file,
+                  header = T,
+                  sep = "\t")
 
   message("reading metadata")
   fullmeta  <- fread( metadata_file, header = T,
@@ -114,13 +121,6 @@ clean_16S_tables <- function(abundance_file = NULL,
             separate( Taxonomy,
                       c( "kingdom", "phylum", "class", "order","family","genus" ),
                       sep = ";")
-  
-  # Clean abundance table: Cut down id name and delete numOtus
-  abund$Group <- sub( ".*(1\\d{5}).*",
-                      "\\1",
-                      abund$Group,
-                      perl = T)
-  
   
   # Check abundance and taxonomy have the same OTUs
   
@@ -136,7 +136,7 @@ clean_16S_tables <- function(abundance_file = NULL,
   #If cull is a list, cut down the abundance, and taxonomy files based on listed values
    if(is.list(cull) & !all(lapply(cull,is.null))){
      message("Culling OTUS from data, raw table written out as csv")
-     message( paste("min number of samples for OTU to be present in = ", cull$min.num,
+     message( paste("min number of samples for OTU to be present in = ", cull$mini.num,
                     "min relative abundance of OTU to count as being present = ", cull$min.abund,
                     "minimum relative abundance in a single sample =", cull$min.single.abund,
                     sep = "\n"))
@@ -223,5 +223,6 @@ pass_fail <- function(clean_tables_list = NULL, id_column = NULL){
           return(result)
           ########### END
 }
+
 
 

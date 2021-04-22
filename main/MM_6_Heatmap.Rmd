@@ -19,16 +19,17 @@ library(data.table)
 library(phyloseq)
 library(speedyseq)
 library(vegan)
-library(pheatmap)
 library(ComplexHeatmap)
 library(dendextend)
 library(dendsort)
 library(viridisLite)
+library(circlize)
+
 library(dynamicTreeCut)
 
 source("../src/get_colors.R")
 
-emp_colors <- get_waimea_colors(cat_typ = "emp")
+emp_colors <- get_waimea_colors()
 
 set.seed(2020)
 
@@ -87,10 +88,10 @@ troph_otus <- merge_by_group(MM_16S_phy, "trophic")
 
 troph_otus <- decostand(troph_otus, method = "pa")
 
-pdf(file  = "outputs/heatmap/clustered_nested_heatmap.pdf", width = 7, height = 5)
-pheatmap(troph_otus,
-         border_color = NA)
-dev.off()
+# pdf(file  = "outputs/heatmap/clustered_nested_heatmap.pdf", width = 7, height = 5)
+# pheatmap(troph_otus,
+#          border_color = NA)
+# dev.off()
 
 # count samples per trophic level
 meta <- as.data.table( as(sample_data(MM_16S_phy), "matrix"))
@@ -231,7 +232,11 @@ complex_heatmap <-
       EMPO_3 = group_meta$empo_3,
       EMPO_2 = group_meta$empo_2,
       EMPO_1 = group_meta$empo_1,
-      col = list(EMPO_1 = emp_colors, EMPO_2 = emp_colors, EMPO_3 = emp_colors)
+      Habitat = group_meta$habitat,
+      col = list(Habitat = emp_colors,
+                 EMPO_1  = emp_colors,
+                 EMPO_2  = emp_colors,
+                 EMPO_3  = emp_colors)
     )
     
     # # Uncomment for bacterial Phylum annotations
@@ -250,17 +255,21 @@ complex_heatmap <-
       group_otus <- scale(group_otus)
     }
     
+    # define color function
+    col_fun = colorRamp2(breaks = c(-1,0,1,10), viridis(4))
+    
     # contruct heatmap
     ht <- Heatmap(
       group_otus,
-      col = viridis(n = 20),
+      col = col_fun,
       border = T,
       heatmap_legend_param = list(title = "Scaled Rel. Abund"),
       
-      column_dend_height = unit(1, "in"),
-      row_dend_width = unit(1, "in"),
+      show_column_dend = F,
+      show_row_dend = F,
       
       cluster_rows = row_dendro,
+    
       show_column_names =  F,
       show_row_names = row_names,
       
@@ -281,7 +290,6 @@ complex_heatmap <-
 Run the heatmap function on each habitat
 
 ```{r}
-
 hab_hts <- lapply(habitat_list,
                   complex_heatmap,
                   metadata_column = "habitat")
@@ -345,24 +353,8 @@ all_hts <- complex_heatmap(group = "bacterial16S",
                            row_names = F)
 saveRDS(all_hts, "../data/processed/all_hts.rds")
 pdf("outputs/heatmap/all_sample_heatmap.pdf",
-      width = 17,
-      height = 22)
-  
-  print(all_hts)
-  
-dev.off()
-
-# presence absence
-all_hts_pa <- complex_heatmap(group = "bacterial16S",
-                              metadata_column = "locus",
-                              row_names = F,
-                              zscale = F,
-                              otus = decostand(all_otus, "pa"))
-
-saveRDS(all_hts_pa, "../data/processed/pa_all_hts.rds")
-pdf("outputs/heatmap/pa_all_sample_heatmap.pdf",
-      width = 17,
-      height = 22)
+      width = 8.5,
+      height = 10)
   
   print(all_hts)
   

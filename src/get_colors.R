@@ -44,9 +44,9 @@ get_waimea_colors <- function(cat_type = c("emp","habitat","trophic","site")){
   
   # discrete colors for three habitat types
   
-  habitat_colors <- c("Riverine" = "#a6cee3", # purple
+  habitat_colors <- c("Riverine" = "#a6cee3", # light blue
                       "Marine"   = "#1f78b4", # blue
-                      "Terrestrial" = "#fed9a6", # green
+                      "Terrestrial" = "#fed9a6", # brown
                       "Other" = "black" # gray for null value
                       )
   # discrete colors for trophic levels
